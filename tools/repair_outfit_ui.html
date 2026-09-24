@@ -73,6 +73,24 @@
       .input-grid { grid-template-columns: 1fr; }
       .drop { height: 250px; }
     }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    a { color: var(--accent); }
+    .advanced > label { margin: 10px 0; }
+    .check { display: flex; align-items: center; gap: 6px; }
+    .inspector { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+    .toolbar label { max-width: 220px; }
+    .toolbar input[type=number] { width: 65px; }
+    .mini { padding: 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .frame-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+    .frame-grid p { margin: 6px 0; font-size: 12px; color: var(--muted); }
+    .canvas-stage { overflow: auto; background: repeating-conic-gradient(#303740 0% 25%, #414952 0% 50%) 0 0 / 16px 16px; border: 1px solid var(--line); }
+    canvas { display: block; margin: 0 auto; image-rendering: pixelated; }
+    #editCanvas { touch-action: none; cursor: crosshair; }
+    .result-stage.loaded { display: block; overflow: auto; }
+    .result-stage.loaded img { max-width: none; max-height: none; margin: 12px auto; image-rendering: pixelated; }
+    .result-head { flex-wrap: wrap; }
+    @media(max-width: 760px) { .frame-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -85,13 +103,14 @@
       <div class="fields">
         <label>Số cột<input id="cols" type="number" min="1" max="64" value="4"></label>
         <label>Số hàng<input id="rows" type="number" min="1" max="64" value="7"></label>
-        <label>Làm nét màu
+        <label>Giới hạn màu
           <select id="colors">
-            <option value="0">Không xử lý</option>
-            <option value="16">Mạnh · 16 màu</option>
-            <option value="32">Vừa · 32 màu</option>
-            <option value="64" selected>Nhẹ · 64 màu</option>
-            <option value="128">Rất nhẹ · 128 màu</option>
+            <option value="0">Giữ màu gốc</option>
+            <option value="16">Tối đa 16 màu</option>
+            <option value="24">Tối đa 24 màu</option>
+            <option value="32" selected>Tối đa 32 màu</option>
+            <option value="64">Tối đa 64 màu</option>
+            <option value="128">Tối đa 128 màu</option>
           </select>
         </label>
       </div>
@@ -99,10 +118,22 @@
         <p class="section-title">Tách nền</p>
         <label>Ngưỡng màu nền<input id="threshold" type="number" min="1" max="255" value="36"></label>
       </div>
+      <div class="advanced">
+        <p class="section-title">Hoàn thiện pixel</p>
+        <label class="check"><input id="outline" type="checkbox" checked> Hoàn thiện viền, giữ nét vải mảnh</label>
+        <label>Tô lại mảng màu<select id="paint">
+          <option value="0">Chỉ giới hạn màu</option>
+          <option value="1" selected>Gọn mảng · 12 màu trang phục</option>
+          <option value="2">Mạnh · 6 màu trang phục</option>
+        </select></label>
+        <label>Xóa cụm rời nhỏ hơn<input id="cleanup" type="number" min="0" max="16" value="3"></label>
+        <p class="hint">Ưu tiên trang phục che thân và cánh tay. Chỉ thay da đang lộ ra; vá khe cổ/cổ tay bằng pixel base. Giới hạn màu áp dụng cho toàn bộ sheet.</p>
+      </div>
       <div class="actions">
         <button id="repair" class="primary" type="button">Xử lý sprite</button>
         <button id="download" class="secondary" type="button" disabled>Tải PNG kết quả</button>
       </div>
+      <p id="fileNotice" class="hint" hidden>Mở giao diện qua <a href="http://127.0.0.1:8765/">server local</a> để xử lý ảnh.</p>
       <div id="status" class="status" role="status">Chọn đủ hai ảnh để bắt đầu.</div>
     </aside>
     <section class="workspace">
@@ -124,8 +155,38 @@
           </div>
         </div>
       </div>
+      <section class="inspector">
+        <div class="result-head"><h2>So sánh từng frame</h2>
+          <div class="toolbar"><button id="prev" class="mini">←</button>
+            <label>Frame <input id="frame" type="number" value="1" min="1" max="28"></label>
+            <button id="next" class="mini">→</button>
+            <label>Zoom <select id="zoom"><option value="4" selected>4×</option><option value="6">6×</option><option value="8">8×</option></select></label>
+          </div>
+        </div>
+        <div class="frame-grid">
+          <div><p>Base</p><div class="canvas-stage"><canvas id="baseCanvas" width="64" height="64"></canvas></div></div>
+          <div><p>Outfit</p><div class="canvas-stage"><canvas id="outfitCanvas" width="64" height="64"></canvas></div></div>
+          <div><p>Kết quả / vùng sửa</p><div class="canvas-stage"><canvas id="editCanvas" width="64" height="64"></canvas></div></div>
+        </div>
+        <div class="toolbar edit-tools">
+          <label>Cọ chỉnh vùng<select id="brush">
+            <option value="inspect">Chỉ xem</option><option value="base">Lấy base (đỏ)</option>
+            <option value="outfit">Giữ outfit (xanh dương)</option><option value="erase">Xóa (xanh lá)</option>
+            <option value="auto">Trả về tự động</option>
+          </select></label>
+          <label>Cỡ cọ<select id="brushSize"><option value="1">1 px</option><option value="3">3 px</option><option value="5">5 px</option></select></label>
+          <label class="check"><input id="showMask" type="checkbox"> Xem vùng ghép tự động</label>
+          <button id="undo" class="mini">Hoàn tác nét</button>
+          <button id="clearFrame" class="mini">Xóa chỉnh frame</button>
+          <button id="saveMask" class="mini">Lưu vùng chỉnh</button>
+          <label class="mini">Mở vùng chỉnh<input id="loadMask" type="file" accept="image/png" hidden></label>
+        </div>
+        <p class="hint">Tô trên khung kết quả rồi bấm Xử lý sprite. Cọ đỏ lấy base, xanh dương giữ trang phục, xanh lá xóa. Khi bật vùng ghép: đỏ là pixel base, xanh dương là trang phục, vàng là phần da được vá lại.</p>
+      </section>
       <div class="result-wrap">
-        <div class="result-head"><h2>Kết quả</h2><span id="resultMeta" class="result-meta"></span></div>
+        <div class="result-head"><h2>Toàn bộ sheet</h2><span id="resultMeta" class="result-meta"></span>
+          <label>Zoom <select id="sheetZoom"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select></label>
+          <button id="downloadReport" class="mini" disabled>Tải báo cáo</button></div>
         <div id="resultStage" class="result-stage">
           <div class="placeholder">Ảnh đã làm sạch sẽ xuất hiện ở đây.</div>
           <img id="resultPreview" alt="Sprite outfit sau khi xử lý">
@@ -133,101 +194,6 @@
       </div>
     </section>
   </main>
-  <script>
-    const state = { base: null, outfit: null, result: null };
-    const $ = (id) => document.getElementById(id);
-
-    function setStatus(message, type = "") {
-      $("status").textContent = message;
-      $("status").className = `status ${type}`.trim();
-    }
-
-    function readFile(file, kind) {
-      if (!file || !file.type.startsWith("image/")) {
-        setStatus("File đã chọn không phải là ảnh hợp lệ.", "error");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const preview = $(kind + "Preview");
-        preview.onload = () => {
-          state[kind] = reader.result;
-          $(kind + "Drop").classList.add("loaded");
-          $(kind + "Meta").textContent = `${preview.naturalWidth} × ${preview.naturalHeight}`;
-          setStatus(state.base && state.outfit ? "Đã sẵn sàng xử lý." : "Chọn thêm ảnh còn lại.");
-        };
-        preview.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    }
-
-    function bindDrop(kind) {
-      const drop = $(kind + "Drop");
-      const input = $(kind + "File");
-      input.addEventListener("change", () => readFile(input.files[0], kind));
-      drop.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") input.click();
-      });
-      ["dragenter", "dragover"].forEach((name) => drop.addEventListener(name, (event) => {
-        event.preventDefault();
-        drop.classList.add("drag");
-      }));
-      ["dragleave", "drop"].forEach((name) => drop.addEventListener(name, (event) => {
-        event.preventDefault();
-        drop.classList.remove("drag");
-      }));
-      drop.addEventListener("drop", (event) => readFile(event.dataTransfer.files[0], kind));
-    }
-
-    bindDrop("base");
-    bindDrop("outfit");
-
-    $("repair").addEventListener("click", async () => {
-      if (!state.base || !state.outfit) {
-        setStatus("Cần chọn cả ảnh base và ảnh outfit.", "error");
-        return;
-      }
-      const button = $("repair");
-      button.disabled = true;
-      button.textContent = "Đang xử lý...";
-      setStatus("Đang phục hồi da, tay, mắt và làm gọn palette...");
-      try {
-        const response = await fetch("/api/repair", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            base: state.base,
-            outfit: state.outfit,
-            cols: Number($("cols").value),
-            rows: Number($("rows").value),
-            colors: Number($("colors").value),
-            skinExpand: 0,
-            backgroundThreshold: Number($("threshold").value)
-          })
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Không xử lý được ảnh");
-        state.result = data.image;
-        $("resultPreview").src = data.image;
-        $("resultStage").classList.add("loaded");
-        $("resultMeta").textContent = `${data.width} × ${data.height} · ${data.frameCount} frame`;
-        $("download").disabled = false;
-        setStatus(`Hoàn tất. Phục hồi ${data.restoredPixels.toLocaleString("vi-VN")} pixel đầu/mặt và làm rõ ${data.outlinedPixels.toLocaleString("vi-VN")} pixel outline.`, "ok");
-      } catch (error) {
-        setStatus(error.message, "error");
-      } finally {
-        button.disabled = false;
-        button.textContent = "Xử lý sprite";
-      }
-    });
-
-    $("download").addEventListener("click", () => {
-      if (!state.result) return;
-      const link = document.createElement("a");
-      link.href = state.result;
-      link.download = "outfit-repaired.png";
-      link.click();
-    });
-  </script>
+  <script src="repair_outfit_ui.js"></script>
 </body>
 </html>

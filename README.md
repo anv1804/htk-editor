@@ -70,7 +70,8 @@ python3 tools/repair_outfit_sprite.py \
   --output repaired-outfit.png \
   --rows 7 \
   --cols 4 \
-  --colors 64 \
+  --colors 32 \
+  --paint 1 \
   --report repair-report.json
 ```
 
@@ -85,6 +86,39 @@ python3 tools/repair_outfit_ui.py
 The tool opens `http://127.0.0.1:8765`. Drop the clean base sheet and outfit
 sheet into the two input areas, adjust the grid if needed, then process and
 download the repaired transparent PNG.
+
+Install the standalone repair dependencies with `python -m pip install Pillow numpy`.
+Open the HTTP address above, not the HTML file directly: image processing runs
+in the local Python server.
+
+The repair pipeline removes the background and small detached debris, replaces
+the generated head and detected hands with exact base pixels, then repaints
+the clothing using a shared sheet palette. A one-pixel inward outline uses
+the base's dark outline color. Clothing stays above the body; restoring a
+hand does not copy the whole bare arm over a sleeve. Base anatomy colors are
+locked even when reducing the palette. `--colors 0` disables recoloring;
+`--paint 0/1/2` selects palette-only, up to 12 cloth colors, or up to 6 cloth
+colors (subject to the total color limit). `--no-outline` preserves the source
+contour; `--cleanup 0` keeps small detached details.
+
+Use the frame comparison at 4×/6×/8× to inspect the result. The input sheets
+must have matching dimensions and aligned poses. Skin-colored fabric and
+overlapping hands can be ambiguous, so the UI includes correction brushes:
+red takes the base, blue keeps the outfit, green erases, and transparent
+returns to automatic processing. Paint on the result frame and process again.
+Undo, save/load correction masks, and a per-frame JSON report are available.
+Saved masks can also be used with `--overrides outfit-corrections.png`.
+Sources and corrections survive reloads within the browser session when
+session storage has enough space.
+
+Sleeves and collars now occlude base anatomy, including sleeves raised in
+front of the face. Hand replacement is clipped to the outfit's exposed-skin
+opening, without dilation into the sleeve. Small missing wrist/neck areas
+are completed from nearby base skin pixels; this is local pixel reconstruction,
+not generation of a new garment or a new pose. Existing colored thin tips
+and ribbons are retained during matte cleanup and outline normalization.
+The mask view distinguishes exact base pixels (red), clothing (blue), and
+reconstructed skin (yellow). Reports include those reconstruction counts.
 
 Register an approved native sprite:
 

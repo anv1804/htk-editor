@@ -75,6 +75,7 @@ class RepairOutfitSpriteTests(unittest.TestCase):
             colors=0,
             background_threshold=10,
             skin_expand=4,
+            outline=False,
         )
 
         self.assertEqual(repaired.getpixel((2, 3)), skin)
@@ -98,6 +99,7 @@ class RepairOutfitSpriteTests(unittest.TestCase):
             outfit,
             background_threshold=10,
             skin_expand=4,
+            outline=False,
         )
 
         self.assertEqual(repaired.getpixel((3, 8)), cloth)
@@ -129,6 +131,7 @@ class RepairOutfitSpriteTests(unittest.TestCase):
                     "colors": 0,
                     "background_threshold": 10.0,
                     "skin_expand": 0,
+                    "cleanup": 0,  # This CLI fixture is intentionally a single pixel.
                     "report": report_path,
                 },
             )()

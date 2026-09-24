@@ -38,7 +38,11 @@ def decode_image(data_url: str) -> Image.Image:
     try:
         raw = base64.b64decode(encoded, validate=True)
         image = Image.open(io.BytesIO(raw))
+        if image.width * image.height > 4_194_304:
+            raise ValueError('Sheet must contain at most 4 million pixels')
         image.load()
+    except ValueError:
+        raise
     except Exception as exc:
         raise ValueError("Cannot read the uploaded image") from exc
     return image.convert("RGBA")
@@ -51,11 +55,18 @@ def encode_png(image: Image.Image) -> str:
 
 
 def process_request(payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError('Request must be a JSON object')
     rows = int(payload.get("rows", 7))
     cols = int(payload.get("cols", 4))
     colors = int(payload.get("colors", 32))
-    skin_expand = int(payload.get("skinExpand", 1))
+    skin_expand = int(payload.get("skinExpand", 0))
     threshold = float(payload.get("backgroundThreshold", 36))
+    cleanup = int(payload.get('cleanup', 3))
+    paint = int(payload.get('paint', 1))
+    outline = payload.get('outline', True)
+    if not isinstance(outline, bool):
+        raise ValueError('Outline must be true or false')
 
     if not 1 <= rows <= 64 or not 1 <= cols <= 64:
         raise ValueError("Rows and columns must be between 1 and 64")
@@ -66,7 +77,10 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
 
     base = decode_image(str(payload.get("base", "")))
     outfit = decode_image(str(payload.get("outfit", "")))
-    repaired, frames = repair_sheet(
+    if max(base.width*base.height, outfit.width*outfit.height) > 4_194_304:
+        raise ValueError('Sheet must contain at most 4 million pixels')
+    overrides = decode_image(payload['overrides']) if payload.get('overrides') else None
+    repaired, frames, mask = repair_sheet(
         base,
         outfit,
         rows=rows,
@@ -74,7 +88,13 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         colors=colors,
         background_threshold=threshold,
         skin_expand=skin_expand,
+        cleanup=cleanup,
+        paint=paint,
+        outline=outline,
+        overrides=overrides,
+        return_masks=True,
     )
+    opaque_colors = len({p[:3] for p in repaired.get_flattened_data() if p[3]}) if hasattr(repaired, 'get_flattened_data') else len({p[:3] for p in repaired.getdata() if p[3]})
     return {
         "image": encode_png(repaired),
         "width": repaired.width,
@@ -82,6 +102,15 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         "frameCount": len(frames),
         "restoredPixels": sum(frame["restored_anatomy_pixels"] for frame in frames),
         "outlinedPixels": sum(frame["outlined_outfit_pixels"] for frame in frames),
+        'reconstructedPixels': sum(frame['reconstructed_skin_pixels'] for frame in frames),
+        'removedPixels': sum(frame['removed_noise_pixels'] for frame in frames),
+        'paletteColors': opaque_colors,
+        'mask': encode_png(mask),
+        'report': {'version': 3, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
+                   'layerPriority': 'clothing-over-body; exposed-skin-only',
+                   'settings': {'rows': rows, 'cols': cols, 'colors': colors, 'outline': outline,
+                                'paint': paint, 'cleanup': cleanup, 'backgroundThreshold': threshold},
+                   'frames': frames},
     }
 
 
@@ -99,7 +128,10 @@ class RepairHandler(BaseHTTPRequestHandler):
             self.send_bytes(200, "text/html; charset=utf-8", UI_PATH.read_bytes())
             return
         if self.path == "/api/health":
-            self.send_bytes(200, "application/json", b'{"ok":true}')
+            self.send_bytes(200, "application/json", b'{"ok":true,"version":3}')
+            return
+        if self.path == '/repair_outfit_ui.js':
+            self.send_bytes(200, 'text/javascript; charset=utf-8', (ROOT / 'repair_outfit_ui.js').read_bytes())
             return
         self.send_bytes(404, "text/plain; charset=utf-8", b"Not found")
 
