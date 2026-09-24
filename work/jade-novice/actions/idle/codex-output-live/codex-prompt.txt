@@ -1,0 +1,37 @@
+Use the available image-generation and sprite skills to act as the animation backend for HKT Pixel Forge.
+
+This is a bounded asset job. Do not edit application source code, contracts, tests, or existing assets. Do not call `hkt-forge codex-run` or launch another Codex process.
+
+Read-only contracts:
+- Character: /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/character.json
+- Action: /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/action.json
+- Attached image: the exact approved character master
+
+Required output directory: /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live
+Create exactly 8 PNG frames named frame-00.png through frame-07.png.
+
+Hard contract:
+- action: idle
+- canvas: exactly 80x76 pixels per frame
+- frame rate intent: 8 fps
+- loop: true
+- fixed character facing: right
+- fixed anchor: (40, 67) for grounded frames
+- sharp binary alpha only
+- at most 20 opaque colors
+- preserve the exact character identity, silhouette language, costume, head scale, and native hard pixel edges
+- never resize, blur, antialias, or smooth the approved master
+- use the prepared transparent motion space; do not crop the canvas
+
+Motion requirements:
+- Create one coherent idle action, not unrelated poses.
+- Use an action-ready first frame.
+- For a loop, return cleanly toward the first pose without a camera shift.
+- Keep motion readable at native gameplay scale.
+
+After creating the frames, run this validation command from the repository root:
+PYTHONPATH=src python3 -m hkt_pixel_forge validate --character /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/character.json --action-contract /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/action.json --frames '/home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live/frame-*.png' --output /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live/qc.json
+
+If validation fails, make one focused correction and validate again. Do not hide failures by changing the contracts or passing diagnostic bypass flags.
+
+Return only the required JSON response. `frames` must list the final PNG paths in animation order. If the required image-generation capability is unavailable, return status `failed`, an empty frames list, and explain the unavailable capability in `notes`.

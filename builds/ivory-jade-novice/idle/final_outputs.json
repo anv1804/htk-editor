@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "final_outputs": [
+    {
+      "type": "spritesheet",
+      "path": "/home/anv/Documents/tools/hkt-asset-system/builds/ivory-jade-novice/idle/spritesheet.png"
+    },
+    {
+      "type": "animation_preview",
+      "path": "/home/anv/Documents/tools/hkt-asset-system/builds/ivory-jade-novice/idle/preview.gif"
+    }
+  ],
+  "frame_count": 4,
+  "frame_size": [
+    64,
+    64
+  ],
+  "grid": {
+    "columns": 4,
+    "rows": 1
+  },
+  "fps": 6,
+  "loop": true
+}

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hkt-pixel-forge"
+version = "0.1.0"
+description = "Native-pixel character and animation asset compiler"
+requires-python = ">=3.11"
+dependencies = ["Pillow>=10"]
+
+[project.scripts]
+hkt-forge = "hkt_pixel_forge.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

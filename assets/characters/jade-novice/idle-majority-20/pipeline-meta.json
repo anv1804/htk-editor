@@ -1,0 +1,16 @@
+{
+  "input": "assets/characters/jade-novice/idle/raw-sheet.png",
+  "rows": 2,
+  "cols": 2,
+  "cell_size": 64,
+  "subject_height": 51,
+  "feet_y": 59,
+  "palette_colors": 20,
+  "alpha_levels": [
+    0,
+    255
+  ],
+  "reduction": "palette-first dominant-color voting on a shared destination grid",
+  "coverage_threshold": 0.42,
+  "outline": "preserved from the pre-quantized source without contour overpainting"
+}

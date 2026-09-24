@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "final_outputs": [
+    {
+      "type": "spritesheet",
+      "path": "/home/anv/Documents/tools/hkt-asset-system/builds/jade-novice/idle-codex/spritesheet.png"
+    },
+    {
+      "type": "animation_preview",
+      "path": "/home/anv/Documents/tools/hkt-asset-system/builds/jade-novice/idle-codex/preview.gif"
+    }
+  ],
+  "frame_count": 8,
+  "frame_size": [
+    80,
+    76
+  ],
+  "grid": {
+    "columns": 4,
+    "rows": 2
+  },
+  "fps": 8,
+  "loop": true
+}

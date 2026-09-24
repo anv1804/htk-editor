@@ -1,0 +1,9 @@
+Create a production-ready 2D pixel-art sprite sheet for a side-scrolling MMORPG.
+
+Create an original base male xianxia/wuxia sword cultivator: a calm young adult with long black hair tied in a high traditional topknot, a small pale-jade hairpiece, two short face-framing locks, layered white and muted teal-blue robes with dark navy edging, charcoal trousers, cloth boots, a pale-jade sash, and a simple brown sword scabbard at the rear hip.
+
+Show the full body in a 3/4 side view facing right, with a slightly oversized head and approximately 2.7-head proportions. Produce exactly four subtle idle frames in a 2x2 grid, read left-to-right and top-to-bottom: neutral, tiny inhale, gentle exhale, and near-neutral loop return. Keep both feet planted and the pelvis and foot-contact line fixed.
+
+Use authentic crisp pixel art, clean one-pixel dark indigo outlines, deliberate pixel clusters, a limited coherent palette, no antialiasing, no blur, and no painterly texture. Keep character identity, camera distance, anatomy, costume, palette, and scale identical in every frame. Keep every subject fully inside its cell with generous margin.
+
+Use a completely flat solid `#FF00FF` background. Do not include borders, separators, labels, text, UI, watermarks, shadows, aura, particles, or detached effects.

@@ -1,0 +1,16 @@
+{
+  "input": "assets/characters/base-sword-cultivator/idle/raw-sheet.png",
+  "rows": 2,
+  "cols": 2,
+  "cell_size": 64,
+  "subject_height": 51,
+  "feet_y": 59,
+  "palette_colors": 28,
+  "alpha_levels": [
+    0,
+    255
+  ],
+  "reduction": "premultiplied BOX coverage to a shared integer destination grid",
+  "coverage_threshold": 0.34,
+  "outline": "one-pixel normalized outer boundary"
+}

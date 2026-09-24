@@ -1,0 +1,80 @@
+{
+  "character_id": "jade-novice",
+  "master": "master.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "palette_size": 20,
+  "facing": "right",
+  "anchor_x": 32,
+  "anchor_y": 59,
+  "alpha_mode": "sharp",
+  "actions": {
+    "idle": {
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "padding": [
+        8,
+        4,
+        8,
+        8
+      ]
+    },
+    "run": {
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "padding": [
+        6,
+        4,
+        12,
+        18
+      ]
+    },
+    "jump": {
+      "frames": 8,
+      "fps": 10,
+      "loop": false,
+      "padding": [
+        24,
+        4,
+        8,
+        8
+      ]
+    },
+    "hit": {
+      "frames": 6,
+      "fps": 10,
+      "loop": false,
+      "padding": [
+        8,
+        4,
+        18,
+        8
+      ]
+    },
+    "attack": {
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "padding": [
+        8,
+        4,
+        8,
+        24
+      ]
+    },
+    "dead": {
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "padding": [
+        8,
+        4,
+        18,
+        18
+      ]
+    }
+  },
+  "schema_version": 1
+}

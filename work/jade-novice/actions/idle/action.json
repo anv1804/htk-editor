@@ -1,0 +1,21 @@
+{
+  "character_id": "jade-novice",
+  "action": "idle",
+  "source": "source.png",
+  "canvas_width": 80,
+  "canvas_height": 76,
+  "content_offset_x": 8,
+  "content_offset_y": 8,
+  "anchor_x": 40,
+  "anchor_y": 67,
+  "frames": 8,
+  "fps": 8,
+  "loop": true,
+  "padding": {
+    "top": 8,
+    "down": 4,
+    "left": 8,
+    "right": 8
+  },
+  "schema_version": 1
+}

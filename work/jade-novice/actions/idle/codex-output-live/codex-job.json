@@ -1,0 +1,128 @@
+{
+  "command": [
+    "codex",
+    "-a",
+    "never",
+    "exec",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--json",
+    "--color",
+    "never",
+    "--sandbox",
+    "workspace-write",
+    "--cd",
+    "/home/anv/Documents/tools/hkt-asset-system",
+    "--image",
+    "/home/anv/Documents/tools/hkt-asset-system/work/jade-novice/master.png",
+    "--output-schema",
+    "/home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live/codex-result-schema.json",
+    "--output-last-message",
+    "/home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live/codex-result.json",
+    "Use the available image-generation and sprite skills to act as the animation backend for HKT Pixel Forge.\n\nThis is a bounded asset job. Do not edit application source code, contracts, tests, or existing assets. Do not call `hkt-forge codex-run` or launch another Codex process.\n\nRead-only contracts:\n- Character: /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/character.json\n- Action: /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/action.json\n- Attached image: the exact approved character master\n\nRequired output directory: /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live\nCreate exactly 8 PNG frames named frame-00.png through frame-07.png.\n\nHard contract:\n- action: idle\n- canvas: exactly 80x76 pixels per frame\n- frame rate intent: 8 fps\n- loop: true\n- fixed character facing: right\n- fixed anchor: (40, 67) for grounded frames\n- sharp binary alpha only\n- at most 20 opaque colors\n- preserve the exact character identity, silhouette language, costume, head scale, and native hard pixel edges\n- never resize, blur, antialias, or smooth the approved master\n- use the prepared transparent motion space; do not crop the canvas\n\nMotion requirements:\n- Create one coherent idle action, not unrelated poses.\n- Use an action-ready first frame.\n- For a loop, return cleanly toward the first pose without a camera shift.\n- Keep motion readable at native gameplay scale.\n\nAfter creating the frames, run this validation command from the repository root:\nPYTHONPATH=src python3 -m hkt_pixel_forge validate --character /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/character.json --action-contract /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/action.json --frames '/home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live/frame-*.png' --output /home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live/qc.json\n\nIf validation fails, make one focused correction and validate again. Do not hide failures by changing the contracts or passing diagnostic bypass flags.\n\nReturn only the required JSON response. `frames` must list the final PNG paths in animation order. If the required image-generation capability is unavailable, return status `failed`, an empty frames list, and explain the unavailable capability in `notes`.\n"
+  ],
+  "workspace": "/home/anv/Documents/tools/hkt-asset-system",
+  "character": {
+    "character_id": "jade-novice",
+    "master": "master.png",
+    "frame_width": 64,
+    "frame_height": 64,
+    "palette_size": 20,
+    "facing": "right",
+    "anchor_x": 32,
+    "anchor_y": 59,
+    "alpha_mode": "sharp",
+    "actions": {
+      "idle": {
+        "frames": 8,
+        "fps": 8,
+        "loop": true,
+        "padding": [
+          8,
+          4,
+          8,
+          8
+        ]
+      },
+      "run": {
+        "frames": 8,
+        "fps": 10,
+        "loop": true,
+        "padding": [
+          6,
+          4,
+          12,
+          18
+        ]
+      },
+      "jump": {
+        "frames": 8,
+        "fps": 10,
+        "loop": false,
+        "padding": [
+          24,
+          4,
+          8,
+          8
+        ]
+      },
+      "hit": {
+        "frames": 6,
+        "fps": 10,
+        "loop": false,
+        "padding": [
+          8,
+          4,
+          18,
+          8
+        ]
+      },
+      "attack": {
+        "frames": 8,
+        "fps": 12,
+        "loop": false,
+        "padding": [
+          8,
+          4,
+          8,
+          24
+        ]
+      },
+      "dead": {
+        "frames": 8,
+        "fps": 8,
+        "loop": false,
+        "padding": [
+          8,
+          4,
+          18,
+          18
+        ]
+      }
+    },
+    "schema_version": 1
+  },
+  "action": {
+    "character_id": "jade-novice",
+    "action": "idle",
+    "source": "source.png",
+    "canvas_width": 80,
+    "canvas_height": 76,
+    "content_offset_x": 8,
+    "content_offset_y": 8,
+    "anchor_x": 40,
+    "anchor_y": 67,
+    "frames": 8,
+    "fps": 8,
+    "loop": true,
+    "padding": {
+      "top": 8,
+      "down": 4,
+      "left": 8,
+      "right": 8
+    },
+    "schema_version": 1
+  },
+  "master": "/home/anv/Documents/tools/hkt-asset-system/work/jade-novice/master.png",
+  "output_dir": "/home/anv/Documents/tools/hkt-asset-system/work/jade-novice/actions/idle/codex-output-live"
+}

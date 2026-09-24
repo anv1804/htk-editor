@@ -1,0 +1,5 @@
+Create an original unarmed young male xianxia cultivation-sect disciple. Use a compact black topknot, short side bangs, a calm simple face, a pale ivory inner robe, a desaturated jade-green short outer robe, dark charcoal trousers, black cloth shoes, and one plain dark-teal sash. Both empty hands must be visible. Do not include any weapon, scabbard, staff, fan, backpack, cape, jewelry, aura, particles, or ground shadow.
+
+Show the full body in a 3/4 side view facing right, with a slightly oversized head and approximately 2.7-head proportions. Arrange exactly four subtle idle frames as a 2x2 grid: neutral, tiny inhale, gentle exhale, and near-neutral loop return. Keep both feet and the pelvis fixed.
+
+Construct genuine low-resolution pixel art as a clean 4x nearest-neighbor enlargement. Use large deliberate clusters, flat colors, one-logical-pixel dark outline, no antialiasing, no semitransparent edges, no blur, no gradients, no dithering, no texture noise, and no isolated color speckles. Keep the face simple enough for native 64x64 output.

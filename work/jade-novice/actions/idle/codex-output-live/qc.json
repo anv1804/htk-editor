@@ -1,0 +1,172 @@
+{
+  "valid": true,
+  "frame_count": 8,
+  "frames": [
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-00.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        17,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-01.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        16,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-02.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        16,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-03.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        17,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-04.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        18,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-05.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        18,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-06.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        17,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "path": "work/jade-novice/actions/idle/codex-output-live/frame-07.png",
+      "width": 80,
+      "height": 76,
+      "colors": 20,
+      "alpha_levels": [
+        0,
+        255
+      ],
+      "bbox": [
+        29,
+        17,
+        51,
+        68
+      ],
+      "edge_touch": false,
+      "anchor_y": 67,
+      "valid": true,
+      "errors": []
+    }
+  ],
+  "drift": {
+    "height_px": 2,
+    "width_px": 0,
+    "anchor_y_px": 0
+  },
+  "loop_pixel_delta": 0.0
+}
