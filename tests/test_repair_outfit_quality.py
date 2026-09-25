@@ -1,5 +1,7 @@
 """Behavior checks for layer priority, crisp output and artist corrections."""
 import sys
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -7,8 +9,8 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from repair_outfit_sprite import repair_sheet, clean_outfit, luminance
-from repair_outfit_ui import process_request, encode_png, decode_image
+from repair_outfit_sprite import repair_sheet, clean_outfit, luminance, build_base_profile, load_base_profile
+from repair_outfit_ui import process_request, encode_png, decode_image, analyze_base
 
 
 def fixture():
@@ -114,7 +116,7 @@ class QualityTests(unittest.TestCase):
         response = process_request(dict(base=encode_png(base), outfit=encode_png(outfit),
                                         rows=1, cols=1, colors=16))
         self.assertLessEqual(response['paletteColors'], 16)
-        self.assertEqual(response['report']['version'], 3)
+        self.assertEqual(response['report']['version'], 5)
         self.assertTrue(response['report']['baseColorsLocked'])
         self.assertEqual(decode_image(response['mask']).size, base.size)
         self.assertGreater(response['outlinedPixels'], 0)
@@ -221,6 +223,122 @@ class ReportedPoseRegressionTests(unittest.TestCase):
         colors = {tuple(pixel) for pixel in np.asarray(self.base).reshape(-1,4)}
         self.assertTrue(all(tuple(pixel) in colors for pixel in pixels[rebuilt]))
         self.assertLessEqual(len(np.unique(pixels[pixels[:,:,3]>0,:3],axis=0)),16)
+
+
+class PinnedBaseAndPaintTests(unittest.TestCase):
+    def test_saved_profile_round_trip_and_mismatched_base_rejection(self):
+        base,_ = fixture()
+        result = analyze_base(dict(base=encode_png(base),rows=1,cols=1))
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'base-anatomy.json'
+            path.write_text(json.dumps(dict(version=1,baseId=result['baseId'],mask=result['profile'])),encoding='utf-8')
+            profile = load_base_profile(path,base,1,1)
+            self.assertEqual(profile.tobytes(),decode_image(result['profile']).tobytes())
+            altered=base.copy(); altered.putpixel((0,0),(255,0,0,255))
+            with self.assertRaisesRegex(ValueError,'different base'):
+                load_base_profile(path,altered,1,1)
+
+    def test_base_profile_is_stable_and_identified_by_pixels_and_grid(self):
+        base, _ = fixture()
+        payload = dict(base=encode_png(base), rows=1, cols=1)
+        first = analyze_base(payload)
+        second = analyze_base(payload)
+        self.assertEqual(first,second)
+        changed = base.copy(); changed.putpixel((1,1),(255,0,0,255))
+        self.assertNotEqual(first['baseId'],analyze_base(dict(payload,base=encode_png(changed)))['baseId'])
+        self.assertNotEqual(first['baseId'],analyze_base(dict(payload,cols=2))['baseId'])
+
+    def test_edited_palm_stays_at_base_coordinates_for_different_outfits(self):
+        base, outfit = fixture()
+        profile = build_base_profile(base,rows=1,cols=1)
+        # Explicitly approved palm; it must not follow a generated hand offset.
+        for y in range(15,19):
+            for x in range(5,7):
+                profile.putpixel((x,y),(255,128,0,255))
+        for shift in (0,3):
+            alternate = outfit.copy()
+            for y in range(14,21):
+                for x in range(3,11):
+                    alternate.putpixel((x,y),(120,175,185,255))
+            for y in range(15,19):
+                for x in range(5+shift,7+shift):
+                    alternate.putpixel((x,y),(225,160,125,255))
+            result,_,_ = run(base,alternate,base_profile=profile,paint=3)
+            for y in range(15,19):
+                for x in range(5,7):
+                    self.assertEqual(result.getpixel((x,y)),base.getpixel((x,y)))
+
+    def test_profile_edit_can_remove_an_incorrect_hand_selection(self):
+        base,outfit = fixture()
+        profile = Image.new('RGBA',base.size)
+        profile.putpixel((5,17),(255,128,0,255))
+        # Retain a head seed so the body is interpretable.
+        profile.paste(build_base_profile(base,rows=1,cols=1))
+        profile.putpixel((5,17),(255,128,0,255))
+        outfit.putpixel((5,17),(120,175,185,255))
+        selected,_,_ = run(base,outfit,base_profile=profile,colors=0,outline=False)
+        profile.putpixel((5,17),(0,0,0,0))
+        removed,_,_ = run(base,outfit,base_profile=profile,colors=0,outline=False)
+        self.assertEqual(selected.getpixel((5,17)),base.getpixel((5,17)))
+        self.assertEqual(removed.getpixel((5,17)),outfit.getpixel((5,17)))
+
+    def test_manual_color_is_locked_through_repaint_and_export(self):
+        base,outfit = fixture()
+        manual = Image.new('RGBA',base.size)
+        color = (78,95,162,255)
+        manual.putpixel((13,19),color)
+        result,_,mask = run(base,outfit,retouch=manual,paint=3)
+        self.assertEqual(result.getpixel((13,19)),color)
+        self.assertEqual(mask.getpixel((13,19)),(180,80,230,255))
+        self.assertLessEqual(len(np.unique(np.asarray(result)[np.asarray(result)[:,:,3]>0,:3],axis=0)),16)
+
+    def test_repaint_keeps_silhouette_and_builds_distinct_shadow_levels(self):
+        base = Image.new('RGBA',(24,24))
+        outfit = Image.new('RGBA',base.size)
+        for y in range(3,21):
+            for x in range(3,21):
+                v = 125+y*4+(x%2)*3
+                outfit.putpixel((x,y),(v-35,v,v+5,255))
+        result,_,_ = run(base,outfit,paint=3,outline=False,colors=16)
+        pixels = np.asarray(result)
+        self.assertTrue(np.array_equal(pixels[:,:,3],np.asarray(outfit)[:,:,3]))
+        colors = np.unique(pixels[pixels[:,:,3]>0,:3],axis=0)
+        self.assertLessEqual(len(colors),6)
+        self.assertGreater(float(np.ptp(luminance(colors))),40)
+
+    def test_invalid_profile_and_paint_dimensions_are_rejected(self):
+        base,outfit = fixture()
+        with self.assertRaisesRegex(ValueError,'Base profile'):
+            run(base,outfit,base_profile=Image.new('RGBA',(1,1)))
+        with self.assertRaisesRegex(ValueError,'Retouch layer'):
+            run(base,outfit,retouch=Image.new('RGBA',(1,1)))
+
+    def test_repaint_preserves_internal_belt_and_fold_lines(self):
+        base = Image.new('RGBA',(24,24))
+        outfit = Image.new('RGBA',base.size)
+        for y in range(3,21):
+            for x in range(3,21):
+                outfit.putpixel((x,y),(175,205,215,255))
+        for x in range(4,20):
+            outfit.putpixel((x,11),(38,57,65,255))
+        for y in range(12,20):
+            outfit.putpixel((12,y),(38,57,65,255))
+        result,_,_ = run(base,outfit,paint=3)
+        for point in [(7,11),(12,16)]:
+            self.assertLess(float(luminance(np.array(result.getpixel(point)[:3]))),60)
+        self.assertGreater(float(luminance(np.array(result.getpixel((7,10))[:3]))),160)
+        self.assertTrue(np.array_equal(np.array(result)[:,:,3],np.array(outfit)[:,:,3]))
+
+    def test_flat_fabric_does_not_acquire_artificial_shadow_patches(self):
+        base = Image.new('RGBA',(24,24))
+        outfit = Image.new('RGBA',base.size)
+        for y in range(3,21):
+            for x in range(3,21):
+                value = (x+y)%3
+                outfit.putpixel((x,y),(180+value,210+value,220+value,255))
+        result,_,_ = run(base,outfit,paint=3,outline=False)
+        pixels = np.array(result)
+        self.assertLess(float(np.ptp(luminance(pixels[pixels[:,:,3]>0,:3]))),8)
 
 
 if __name__ == '__main__':

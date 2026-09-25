@@ -86,7 +86,7 @@
     .frame-grid p { margin: 6px 0; font-size: 12px; color: var(--muted); }
     .canvas-stage { overflow: auto; background: repeating-conic-gradient(#303740 0% 25%, #414952 0% 50%) 0 0 / 16px 16px; border: 1px solid var(--line); }
     canvas { display: block; margin: 0 auto; image-rendering: pixelated; }
-    #editCanvas { touch-action: none; cursor: crosshair; }
+    #editCanvas, #baseCanvas { touch-action: none; cursor: crosshair; }
     .result-stage.loaded { display: block; overflow: auto; }
     .result-stage.loaded img { max-width: none; max-height: none; margin: 12px auto; image-rendering: pixelated; }
     .result-head { flex-wrap: wrap; }
@@ -123,11 +123,12 @@
         <label class="check"><input id="outline" type="checkbox" checked> Hoàn thiện viền, giữ nét vải mảnh</label>
         <label>Tô lại mảng màu<select id="paint">
           <option value="0">Chỉ giới hạn màu</option>
-          <option value="1" selected>Gọn mảng · 12 màu trang phục</option>
+          <option value="1">Gọn mảng · 12 màu trang phục</option>
           <option value="2">Mạnh · 6 màu trang phục</option>
+          <option value="3" selected>Tô lại vật liệu · sáng / nền / bóng</option>
         </select></label>
         <label>Xóa cụm rời nhỏ hơn<input id="cleanup" type="number" min="0" max="16" value="3"></label>
-        <p class="hint">Ưu tiên trang phục che thân và cánh tay. Chỉ thay da đang lộ ra; vá khe cổ/cổ tay bằng pixel base. Giới hạn màu áp dụng cho toàn bộ sheet.</p>
+        <p class="hint">Đầu và bàn tay lấy tại vị trí cố định của base. Tay áo che cánh tay; vùng đầu/tay có thể sửa trên khung base rồi lưu để dùng lại với outfit khác.</p>
       </div>
       <div class="actions">
         <button id="repair" class="primary" type="button">Xử lý sprite</button>
@@ -164,7 +165,7 @@
           </div>
         </div>
         <div class="frame-grid">
-          <div><p>Base</p><div class="canvas-stage"><canvas id="baseCanvas" width="64" height="64"></canvas></div></div>
+          <div><p>Base / vị trí đầu và bàn tay</p><div class="canvas-stage"><canvas id="baseCanvas" width="64" height="64"></canvas></div></div>
           <div><p>Outfit</p><div class="canvas-stage"><canvas id="outfitCanvas" width="64" height="64"></canvas></div></div>
           <div><p>Kết quả / vùng sửa</p><div class="canvas-stage"><canvas id="editCanvas" width="64" height="64"></canvas></div></div>
         </div>
@@ -173,15 +174,32 @@
             <option value="inspect">Chỉ xem</option><option value="base">Lấy base (đỏ)</option>
             <option value="outfit">Giữ outfit (xanh dương)</option><option value="erase">Xóa (xanh lá)</option>
             <option value="auto">Trả về tự động</option>
+            <option value="profileHead">Sửa đầu trên base</option>
+            <option value="profileHand">Sửa bàn tay trên base</option>
+            <option value="profileErase">Bỏ vùng nhận nhầm trên base</option>
+            <option value="color">Tô màu kết quả</option>
+            <option value="sample">Hút màu kết quả</option>
+            <option value="unpaint">Bỏ màu tô tay</option>
           </select></label>
           <label>Cỡ cọ<select id="brushSize"><option value="1">1 px</option><option value="3">3 px</option><option value="5">5 px</option></select></label>
           <label class="check"><input id="showMask" type="checkbox"> Xem vùng ghép tự động</label>
+          <label>Độ đậm vùng <input id="maskOpacity" type="range" min="0" max="80" value="30"></label>
+          <label>Màu tô <input id="paintColor" type="color" value="#90b9bb"></label>
           <button id="undo" class="mini">Hoàn tác nét</button>
-          <button id="clearFrame" class="mini">Xóa chỉnh frame</button>
+          <button id="clearFrame" class="mini">Xóa vùng ghép frame</button>
           <button id="saveMask" class="mini">Lưu vùng chỉnh</button>
           <label class="mini">Mở vùng chỉnh<input id="loadMask" type="file" accept="image/png" hidden></label>
         </div>
-        <p class="hint">Tô trên khung kết quả rồi bấm Xử lý sprite. Cọ đỏ lấy base, xanh dương giữ trang phục, xanh lá xóa. Khi bật vùng ghép: đỏ là pixel base, xanh dương là trang phục, vàng là phần da được vá lại.</p>
+        <div class="toolbar">
+          <button id="analyzeBase" class="mini">Nhận diện lại base</button>
+          <label class="check"><input id="showProfile" type="checkbox"> Xem đầu/tay cố định</label>
+          <button id="saveProfile" class="mini">Lưu bản đồ base</button>
+          <label class="mini">Mở bản đồ base<input id="loadProfile" type="file" accept="application/json" hidden></label>
+          <button id="savePaint" class="mini">Lưu lớp màu tô</button>
+          <label class="mini">Mở lớp màu tô<input id="loadPaint" type="file" accept="image/png" hidden></label>
+        </div>
+        <p id="profileStatus" class="hint">Bản đồ đầu/tay được nhận diện từ base, có thể chỉnh từng pixel và lưu riêng theo base.</p>
+        <p class="hint">Cọ sửa đầu/tay dùng trên khung base (đầu đỏ, tay cam). Cọ vùng ghép và màu dùng trên khung kết quả. Tô xong bấm Xử lý sprite. Bản đồ ghép: đỏ lấy base, xanh dương là áo, vàng vá cổ, tím là màu tô tay. Lớp màu phủ chỉ để kiểm tra vùng, không được ghi vào PNG xuất.</p>
       </section>
       <div class="result-wrap">
         <div class="result-head"><h2>Toàn bộ sheet</h2><span id="resultMeta" class="result-meta"></span>

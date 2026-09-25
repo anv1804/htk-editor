@@ -120,6 +120,35 @@ and ribbons are retained during matte cleanup and outline normalization.
 The mask view distinguishes exact base pixels (red), clothing (blue), and
 reconstructed skin (yellow). Reports include those reconstruction counts.
 
+The UI and CLI now default to a reusable base anatomy profile. The initial
+head/palm regions are estimated from the base alone, rather than following
+skin shapes in each generated outfit. Edit head (red) and palms (orange) on
+the base canvas, including erasing false selections. A selected palm keeps
+the base's original coordinates and pixels; only that small palm region can
+open a cuff, while the rest of the arm stays behind clothing. Obsolete outfit
+hand openings are filled from nearby sleeve material. Check and correct the
+automatic proposal once, especially for crossed arms or hands behind the head.
+
+Profiles are saved in browser local storage under the base pixel/grid identity,
+and can be exported/imported as `base-anatomy.json`. Loading one for a different
+base or grid is rejected. CLI: `--base-profile base-anatomy.json` (RGBA mask PNG
+is also supported); `--free-skin` selects the older outfit-guided behavior.
+The Python `repair_sheet` API retains its old default for compatibility; pass
+`lock_base=True` or `base_profile=...` to use fixed anatomy.
+
+`--paint 3` (the new UI/CLI default) separates two fabric color families and
+repaints shadow, midtone and highlight regions with shared ramps. It preserves
+the silhouette and uses source lighting rather than inventing new folds.
+Connected dark belt, cuff and fold lines are preserved before recoloring.
+Tone levels follow the source light distribution, so nearly flat fabric does
+not gain exaggerated shadow patches and cream/blue shades retain their hue.
+Other paint modes remain available. The UI also has direct color painting,
+an eyedropper that ignores mask overlays, and a separate PNG retouch layer
+(`--retouch outfit-retouch.png`). Hand-painted colors are locked during
+repainting and count toward the selected total palette budget. Undo works
+for region, profile and color edits. Mask opacity affects the inspection
+overlay only and never the exported sprite.
+
 Register an approved native sprite:
 
 ```bash

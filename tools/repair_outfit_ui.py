@@ -15,7 +15,7 @@ from typing import Any
 
 from PIL import Image
 
-from repair_outfit_sprite import repair_sheet
+from repair_outfit_sprite import repair_sheet, build_base_profile, base_profile_identity
 
 
 ROOT = Path(__file__).resolve().parent
@@ -54,6 +54,20 @@ def encode_png(image: Image.Image) -> str:
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def analyze_base(payload):
+    if not isinstance(payload, dict):
+        raise ValueError('Request must be a JSON object')
+    rows, cols = int(payload.get('rows',7)), int(payload.get('cols',4))
+    if not 1 <= rows <= 64 or not 1 <= cols <= 64:
+        raise ValueError('Rows and columns must be between 1 and 64')
+    base = decode_image(str(payload.get('base','')))
+    threshold = float(payload.get('backgroundThreshold',36))
+    profile = build_base_profile(base,rows=rows,cols=cols,threshold=threshold)
+    identity = base_profile_identity(base,rows,cols)
+    return dict(profile=encode_png(profile),baseId=identity,width=base.width,height=base.height,
+                rows=rows,cols=cols)
+
+
 def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError('Request must be a JSON object')
@@ -63,7 +77,7 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     skin_expand = int(payload.get("skinExpand", 0))
     threshold = float(payload.get("backgroundThreshold", 36))
     cleanup = int(payload.get('cleanup', 3))
-    paint = int(payload.get('paint', 1))
+    paint = int(payload.get('paint', 3))
     outline = payload.get('outline', True)
     if not isinstance(outline, bool):
         raise ValueError('Outline must be true or false')
@@ -93,6 +107,9 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         outline=outline,
         overrides=overrides,
         return_masks=True,
+        lock_base=bool(payload.get('lockBase',True)),
+        base_profile=decode_image(payload['baseProfile']) if payload.get('baseProfile') else None,
+        retouch=decode_image(payload['retouch']) if payload.get('retouch') else None,
     )
     opaque_colors = len({p[:3] for p in repaired.get_flattened_data() if p[3]}) if hasattr(repaired, 'get_flattened_data') else len({p[:3] for p in repaired.getdata() if p[3]})
     return {
@@ -106,8 +123,8 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         'removedPixels': sum(frame['removed_noise_pixels'] for frame in frames),
         'paletteColors': opaque_colors,
         'mask': encode_png(mask),
-        'report': {'version': 3, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
-                   'layerPriority': 'clothing-over-body; exposed-skin-only',
+        'report': {'version': 5, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
+                   'layerPriority': 'pinned-base-palms; clothing-over-forearms',
                    'settings': {'rows': rows, 'cols': cols, 'colors': colors, 'outline': outline,
                                 'paint': paint, 'cleanup': cleanup, 'backgroundThreshold': threshold},
                    'frames': frames},
@@ -128,7 +145,7 @@ class RepairHandler(BaseHTTPRequestHandler):
             self.send_bytes(200, "text/html; charset=utf-8", UI_PATH.read_bytes())
             return
         if self.path == "/api/health":
-            self.send_bytes(200, "application/json", b'{"ok":true,"version":3}')
+            self.send_bytes(200, "application/json", b'{"ok":true,"version":5}')
             return
         if self.path == '/repair_outfit_ui.js':
             self.send_bytes(200, 'text/javascript; charset=utf-8', (ROOT / 'repair_outfit_ui.js').read_bytes())
@@ -136,7 +153,7 @@ class RepairHandler(BaseHTTPRequestHandler):
         self.send_bytes(404, "text/plain; charset=utf-8", b"Not found")
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/api/repair":
+        if self.path not in ("/api/repair", "/api/base-profile"):
             self.send_bytes(404, "application/json", b'{"error":"Not found"}')
             return
         try:
@@ -144,7 +161,7 @@ class RepairHandler(BaseHTTPRequestHandler):
             if length <= 0 or length > MAX_REQUEST_BYTES:
                 raise ValueError("Upload is empty or larger than 32 MB")
             payload = json.loads(self.rfile.read(length))
-            result = process_request(payload)
+            result = analyze_base(payload) if self.path == '/api/base-profile' else process_request(payload)
             body = json.dumps(result, separators=(",", ":")).encode("utf-8")
             self.send_bytes(200, "application/json", body)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
