@@ -85,6 +85,8 @@ function invalidate(message = "Thiết lập đã đổi. Bấm Xử lý sprite 
   $("download").disabled = true;
   $("downloadReport").disabled = true;
   $("downloadOutfit").disabled = true;
+  $("split").disabled = $("downloadHeadwear").disabled = true;
+  $("splitPreview").hidden = true;
   if (state.base && state.outfit) status(message);
 }
 function clearResult() {
@@ -95,6 +97,11 @@ function clearResult() {
   invalidate();
 }
 async function setSource(kind, url) {
+  if (!url.startsWith("data:")) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Không tải được ảnh.");
+    url = await readFile(await response.blob());
+  }
   const img = await loadImage(url);
   if (img.width * img.height > 4194304) throw new Error("Ảnh vượt quá 4 triệu pixel.");
   state[kind] = img;
@@ -190,7 +197,7 @@ function dab(p, g, mode) {
   if (context === correctionContext) paintContext.clearRect(g.x + x, g.y + y, w, h);
   if (["auto", "profileErase", "unpaint"].includes(mode)) context.clearRect(g.x + x, g.y + y, w, h);
   else {
-    context.fillStyle = { base: "#ff0000", outfit: "#0000ff", erase: "#00ff00", profileHead: "#ff0000", profileHand: "#ff8000", color: $("paintColor").value }[mode];
+    context.fillStyle = { base: "#ff0000", outfit: "#0000ff", headwear: "#ffc800", erase: "#00ff00", profileHead: "#ff0000", profileHand: "#ff8000", color: $("paintColor").value }[mode];
     context.fillRect(g.x + x, g.y + y, w, h);
   }
 }
@@ -334,6 +341,7 @@ $("repair").onclick = async () => {
   const revision = state.revision;
   state.busy = true;
   $("repair").disabled = true;
+  $("split").disabled = $("downloadOutfit").disabled = $("downloadHeadwear").disabled = true;
   $("download").disabled = $("downloadReport").disabled = true;
   status("Đang tách vùng, tô màu và hoàn thiện viền…");
   try {
@@ -348,11 +356,15 @@ $("repair").onclick = async () => {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Không xử lý được ảnh.");
     if (!result.report?.composition) throw new Error("Server chưa cập nhật chế độ ghép lớp. Khởi động lại server.");
-    if ((result.report?.version || 0) < 5) throw new Error("Server đang chạy thuật toán cũ. Khởi động lại tools/repair_outfit_ui.py để dùng bản tô màu giữ nếp áo và đai.");
+    if ((result.report?.version || 0) < 6) throw new Error("Server chưa cập nhật v3. Khởi động lại tools/repair_outfit_ui.py.");
     const [image, mask] = await Promise.all([loadImage(result.image), loadImage(result.mask)]);
     if (revision !== state.revision) return status("Thiết lập đã đổi trong khi xử lý. Bấm Xử lý sprite để cập nhật.");
     state.result = image; state.mask = mask; state.report = result.report;
     state.outfitLayer = result.outfitLayer;
+    state.headwearLayer = result.headwearLayer;
+    $("split").disabled = !result.headwearLayer;
+    $("downloadHeadwear").disabled = true;
+    $("splitPreview").hidden = true;
     $("downloadOutfit").disabled = false;
     $("resultPreview").src = result.image;
     $("resultStage").classList.add("loaded");
@@ -368,6 +380,17 @@ $("repair").onclick = async () => {
 };
 $("download").onclick = () => { if (state.result) download(state.result.src, "outfit-repaired.png"); };
 $("downloadOutfit").onclick = () => { if (state.outfitLayer) download(state.outfitLayer, "outfit-layer.png"); };
+$("split").onclick = () => {
+  if (state.busy || !state.headwearLayer) return;
+  $("clothingPreview").src = state.outfitLayer;
+  $("headwearPreview").src = state.headwearLayer;
+  $("splitPreview").hidden = false;
+  $("downloadHeadwear").disabled = false;
+  status("Đã tách trang phục và tóc + phụ kiện đầu, giữ nguyên kích thước và tọa độ.");
+};
+$("downloadHeadwear").onclick = () => {
+  if (state.headwearLayer) download(state.headwearLayer, "hair-headwear-layer.png");
+};
 $("downloadReport").onclick = () => {
   if (!state.report) return;
   const url = URL.createObjectURL(new Blob([JSON.stringify(state.report, null, 2)], { type: "application/json" }));

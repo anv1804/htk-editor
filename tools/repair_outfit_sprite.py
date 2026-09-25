@@ -482,8 +482,99 @@ def _frame_layers(base, outfit, *, background_threshold, skin_expand, cleanup=3,
     return output, anatomy, garment, reconstructed, stats
 
 
+def warm_material_mask(base, base_fg, rgb, fg):
+    """Separate yellow/tan material from the base's redder flesh chroma."""
+    flesh = skin_mask(base, base_fg) & (luminance(base[:,:,:3]) > 150)
+    if not flesh.any():
+        return np.zeros_like(fg)
+    samples = base[:,:,:3][flesh].astype(float)
+    flesh_ratio = np.median((samples[:,0]-samples[:,1]) / np.maximum(samples[:,0]-samples[:,2], 1))
+    r, g, b = rgb.astype(float).transpose(2,0,1)
+    ratio = (r-g) / np.maximum(r-b, 1)
+    seeds = fg & (r > g) & (g-b > 15) & (ratio < flesh_ratio-.1)
+    material = np.zeros_like(fg)
+    for points in components(seeds):
+        if len(points) >= 3:
+            material |= fill_holes(group_mask(fg.shape, points)) & fg
+    # Keep the material's own dark stitching, not nearby bright flesh.
+    material |= dilate(material, 1) & fg & (luminance(rgb) < 115)
+    head = base_head_mask(base, base_fg)
+    hy = np.nonzero(head)[0]
+    if len(hy):
+        yy = np.indices(fg.shape)[0]
+        body = fg & (yy > hy.max())
+        if np.count_nonzero(material & body) > max(12, body.sum()*.25):
+            # A predominantly tan suit is ambiguous, not bare anatomy. Keep
+            # it unless a bright flesh pixel also agrees with the base.
+            distance = np.linalg.norm(rgb.astype(float)-base[:,:,:3], axis=2)
+            confident_skin = (fg & base_fg & (luminance(rgb) > 165)
+                              & (abs(ratio-flesh_ratio) < .09) & (distance < 45))
+            material |= body & ~confident_skin
+            material &= (yy > hy.max()) | ~dilate(head, 1)
+        elif np.count_nonzero(material & (yy < hy.min())) < 6:
+            return np.zeros_like(fg)
+    return material
+
+
+def headwear_mask(base, outfit, threshold=36, cleanup=3):
+    """Grow crown-anchored material, not a rectangular crop of the head."""
+    b = np.asarray(base.convert('RGBA'))
+    rgb, fg, _ = clean_outfit(np.asarray(outfit.convert('RGBA')), threshold, cleanup)
+    head = base_head_mask(b, foreground_mask(b, threshold))
+    result = np.zeros(fg.shape, bool)
+    hy, hx = np.nonzero(head)
+    if not len(hy):
+        return result
+    yy, xx = np.indices(fg.shape)
+    top, bottom = hy.min(), hy.max()
+    left, right = hx.min(), hx.max()
+    width = right-left+1
+    row_widths = np.zeros(fg.shape[0], int)
+    for y in range(max(0, top-width), min(fg.shape[0], top+max(3, round((bottom-top)*.5)))):
+        xs = np.flatnonzero(fg[y] & (xx[y] >= left-width) & (xx[y] <= right+width))
+        if len(xs):
+            row_widths[y] = xs[-1]-xs[0]+1
+    brim = int(row_widths.argmax())
+    if row_widths[brim] >= width*1.3 and fg[:max(0,top-1)].any():
+        # Wide hats have a geometric brim; its warm fill is not skin.
+        return fg & (yy <= brim+1) & (xx >= left-width) & (xx <= right+width)
+    skin = skin_mask(np.dstack((rgb, fg.astype(np.uint8)*255)), fg)
+    light = luminance(rgb)
+    warm = warm_material_mask(b, foreground_mask(b, threshold), rgb, fg)
+    # Require material above the scalp, avoiding the bald head's own outline.
+    crown = fg & (~skin | warm) & (yy < top-1) & (xx >= left-4) & (xx <= right+4)
+    seeds = np.zeros_like(fg)
+    for points in components(crown):
+        if len(points) >= 3:
+            seeds |= group_mask(fg.shape, points)
+    if not seeds.any():
+        return result
+    zone = (xx >= left-width//2) & (xx <= right+width//2)
+    zone &= yy <= bottom+round(width*.65)
+    upper = yy <= top+max(3, round((bottom-top)*.48))
+    sides = (xx <= left+2) | (xx >= right-2)
+    allowed = fg & (~skin | warm | (yy < top)) & zone & (upper | sides)
+    # Crown colors allow long hair to continue below the face, but not into
+    # differently colored shoulder fabric merely touching the hair.
+    palette = np.unique(rgb[seeds], axis=0)
+    distance = np.full(fg.shape, 255., dtype=np.float32)
+    if fg.any():
+        nearest = nearest_colors(rgb[fg], palette)
+        distance[fg] = np.linalg.norm(rgb[fg].astype(float)-palette[nearest], axis=1)
+    allowed &= upper | ((distance < 40) & (light < 125))
+    exposed_limb = skin_mask(b, foreground_mask(b, threshold)) & ~dilate(head, 1)
+    allowed &= ~(dilate(exposed_limb, 1) & ~upper)
+    result = seeds.copy()
+    for _ in range(fg.shape[0]+fg.shape[1]):
+        grown = result | (dilate(result, 1) & allowed)
+        if np.array_equal(grown, result):
+            break
+        result = grown
+    return fill_holes(result) & fg
+
+
 def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
-                          cleanup=3, overrides=None, profile=None):
+                          cleanup=3, overrides=None, profile=None, headwear=None):
     """Base underneath a cut-out outfit. Fabric always occludes the base."""
     b,o = np.asarray(base.convert('RGBA')),np.asarray(outfit.convert('RGBA'))
     base_fg = foreground_mask(b,background_threshold)
@@ -492,6 +583,9 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     regions = occlusion_regions(b,base_fg,cleaned,fg)
     base_skin = skin_mask(b,base_fg)
     candidate = skin_mask(cleaned,fg)
+    protected_material = (warm_material_mask(b, base_fg, rgb, fg)
+                          if headwear is not None else np.zeros_like(fg))
+    candidate &= ~protected_material
     palette = np.unique(b[:,:,:3][base_skin],axis=0)
     skin = np.zeros(fg.shape,bool)
     if len(palette) and np.any(candidate):
@@ -511,7 +605,7 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     # confident cloth colors remain on top.
     base_head = base_head_mask(b,base_fg)
     head_zone = dilate(base_head,2) & fg
-    head_area = head_zone & ~regions['cloth']
+    head_area = head_zone & ~regions['cloth'] & ~protected_material
     r,g,blue = (rgb[:,:,i].astype(np.int32) for i in range(3))
     face_tone = head_area & (r >= 105) & (r > g+12) & (g > blue+3)
     neutral_fringe = head_area & (np.max(rgb,axis=2).astype(np.int16)-np.min(rgb,axis=2).astype(np.int16) <= 42)
@@ -542,7 +636,8 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     red_shadow = fg & (r > g+14) & (r > blue+18) & (blue >= g*.66)
     red_shadow &= (r >= 40) & dilate(removed,1)
     removed |= red_shadow & (base_head | dilate(base_skin,1))
-    material = regions['cloth'] & ~removed
+    removed &= ~protected_material
+    material = (regions['cloth'] | protected_material) & ~removed
     chromatic = ((g > r+8) & (g > blue+8)) | ((blue > r+8) & (blue > g+4))
     material &= (luminance(rgb) >= 110) | (chromatic & (luminance(rgb) > 45))
     offsets = [(dy,dx) for dy in (-1,0,1) for dx in (-1,0,1) if dy or dx]
@@ -574,6 +669,16 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
                 right_open |= bool(near[y,xs.max()+1])
             if left_open and right_open:
                 removed |= group_mask(fg.shape,points) & fg
+    if headwear is not None:
+        # Snap only ambiguous edge pixels near an already exposed foot.
+        # A material neighborhood veto protects boots, hems and trouser legs.
+        if len(hy) and len(by):
+            yy = np.indices(fg.shape)[0]
+            lower = yy > hy.max()+(by.max()-hy.max())*.55
+            aperture = removed & base_skin & lower
+            fringe = dilate(aperture, 2) & fg & lower & ~material & (cloth_support <= 2)
+            removed |= fringe & (dark | red_shadow) & (boundary(base_fg) | ~base_fg)
+        removed &= ~(headwear | protected_material)
     garment = fg & ~removed
     erase = np.zeros(fg.shape,bool)
     if overrides is not None:
@@ -581,6 +686,8 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
         marked = labels[:,:,3] >= 128
         reveal = marked & (labels[:,:,0] > 200) & (labels[:,:,1] < 100)
         keep = marked & (labels[:,:,2] > 200) & (labels[:,:,0] < 100)
+        if headwear is not None:
+            keep |= marked & (labels[:,:,0] > 200) & (labels[:,:,1] > 100) & (labels[:,:,2] < 100)
         erase = marked & (labels[:,:,1] > 200) & (labels[:,:,0] < 100)
         # Revealing outside the base means transparency, never invented skin.
         garment = (garment & ~reveal & ~erase) | (keep & foreground_mask(o,background_threshold))
@@ -732,7 +839,7 @@ def shade_materials(rgb, fill, budget, cell_size):
     return coherent_fabric(result,fill,cell_size)
 
 
-def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size):
+def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size, headwear=None):
     out = rgba.copy()
     ink = outline_color(out, anatomy)
     contours = np.zeros(garment.shape,bool)
@@ -780,7 +887,14 @@ def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size):
         if remaining < 1:
             raise ValueError(f'Palette needs at least {len(locked)+1} colors to preserve base anatomy; choose a larger limit')
         if paint == 3:
-            out[:,:,:3] = shade_materials(out[:,:,:3],fill,min(remaining,9),cell_size)
+            hair = fill & headwear if headwear is not None else np.zeros_like(fill)
+            cloth = fill & ~hair
+            if hair.any() and cloth.any() and remaining >= 2:
+                hair_budget = min(6, max(1, remaining//2))
+                out[:,:,:3] = shade_materials(out[:,:,:3],hair,hair_budget,cell_size)
+                out[:,:,:3] = shade_materials(out[:,:,:3],cloth,min(9,remaining-hair_budget),cell_size)
+            else:
+                out[:,:,:3] = shade_materials(out[:,:,:3],fill,min(remaining,9),cell_size)
             out[out[:,:,3] == 0] = 0
             return out, contours
         count = min(remaining, {0:256,1:12,2:6}[paint])
@@ -829,7 +943,7 @@ def repair_frame(base, outfit, *, background_threshold, skin_expand, outline=Tru
 
 def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin_expand,
                  outline=True, cleanup=3, paint=1, overrides=None, return_masks=False,
-                 base_profile=None, lock_base=False, retouch=None, composition='pinned'):
+                 base_profile=None, lock_base=False, retouch=None, composition='pinned', accessories=False):
     if composition not in ('layers','pinned'):
         raise ValueError('Unknown composition mode')
     if not isinstance(rows,int) or not isinstance(cols,int) or not 1 <= rows <= 64 or not 1 <= cols <= 64:
@@ -855,16 +969,27 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
     anatomy = np.zeros(output.shape[:2],bool)
     garment = np.zeros(output.shape[:2],bool)
     reconstructed = np.zeros(output.shape[:2],bool)
+    headwear = np.zeros(output.shape[:2],bool)
     reports = []
     for row in range(rows):
         for col in range(cols):
             x,y = col*cw,row*ch
             box = (x,y,x+cw,y+ch)
             compose = _overlay_frame_layers if composition == 'layers' else _frame_layers
+            extra = {}
+            if accessories and composition == 'layers':
+                h = headwear_mask(base.crop(box), outfit.crop(box), background_threshold, cleanup)
+                if overrides is not None:
+                    labels = np.asarray(overrides.crop(box).convert('RGBA'))
+                    marked = labels[:,:,3] >= 128
+                    force_head = marked & (labels[:,:,0] > 200) & (labels[:,:,1] > 100) & (labels[:,:,2] < 100)
+                    h = (h & ~marked) | force_head
+                headwear[y:y+ch,x:x+cw] = h
+                extra['headwear'] = h
             out,a,g,s,stats = compose(base.crop(box),outfit.crop(box),background_threshold=background_threshold,
                                          skin_expand=skin_expand,cleanup=cleanup,
                                          overrides=overrides.crop(box) if overrides is not None else None,
-                                         profile=base_profile.crop(box) if base_profile is not None else None)
+                                         profile=base_profile.crop(box) if base_profile is not None else None, **extra)
             output[y:y+ch,x:x+cw], anatomy[y:y+ch,x:x+cw], garment[y:y+ch,x:x+cw] = out,a,g
             reconstructed[y:y+ch,x:x+cw] = s
             stats.update(row=row,col=col)
@@ -876,7 +1001,7 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         output[painted] = manual[painted]
         output[painted,3] = 255
         anatomy[painted] = reconstructed[painted] = garment[painted] = False
-    output,contours = repaint(output,anatomy | reconstructed | painted,garment,colors=colors,paint=paint,outline=outline,cell_size=(cw,ch))
+    output,contours = repaint(output,anatomy | reconstructed | painted,garment,colors=colors,paint=paint,outline=outline,cell_size=(cw,ch),headwear=headwear if accessories else None)
     for stats in reports:
         x,y = stats['col']*cw,stats['row']*ch
         stats['outlined_outfit_pixels'] = int(contours[y:y+ch,x:x+cw].sum())
@@ -887,6 +1012,8 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         mask[garment] = [70,155,255,255]
         mask[reconstructed] = [240,190,60,255]
         mask[painted] = [180,80,230,255]
+        if accessories:
+            mask[headwear & (garment | painted)] = [255,200,0,255]
         return result, reports, Image.fromarray(mask)
     return result, reports
 

@@ -116,7 +116,7 @@ class QualityTests(unittest.TestCase):
         response = process_request(dict(base=encode_png(base), outfit=encode_png(outfit),
                                         rows=1, cols=1, colors=16))
         self.assertLessEqual(response['paletteColors'], 16)
-        self.assertEqual(response['report']['version'], 5)
+        self.assertEqual(response['report']['version'], 6)
         self.assertTrue(response['report']['baseColorsLocked'])
         self.assertEqual(decode_image(response['mask']).size, base.size)
         self.assertGreater(response['outlinedPixels'], 0)

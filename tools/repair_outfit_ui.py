@@ -111,6 +111,7 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         outline=outline,
         overrides=overrides,
         return_masks=True,
+        accessories=True,
         composition=composition,
         lock_base=bool(payload.get('lockBase',True)),
         base_profile=decode_image(payload['baseProfile']) if payload.get('baseProfile') else None,
@@ -119,9 +120,14 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     opaque_colors = len({p[:3] for p in repaired.get_flattened_data() if p[3]}) if hasattr(repaired, 'get_flattened_data') else len({p[:3] for p in repaired.getdata() if p[3]})
     outfit_layer = np.array(repaired)
     garment = np.all(np.asarray(mask)[:,:,:3] == [70,155,255],axis=2)
+    garment |= np.all(np.asarray(mask)[:,:,:3] == [180,80,230],axis=2)
+    headwear = np.all(np.asarray(mask)[:,:,:3] == [255,200,0],axis=2)
+    head_layer = np.array(repaired)
+    head_layer[~headwear] = 0
     outfit_layer[~garment] = 0
     return {
         'outfitLayer': encode_png(Image.fromarray(outfit_layer)),
+        'headwearLayer': encode_png(Image.fromarray(head_layer)),
         "image": encode_png(repaired),
         "width": repaired.width,
         "height": repaired.height,
@@ -132,7 +138,7 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         'removedPixels': sum(frame['removed_noise_pixels'] for frame in frames),
         'paletteColors': opaque_colors,
         'mask': encode_png(mask),
-        'report': {'version': 5, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
+        'report': {'version': 6, 'assetVersion': 3, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
                    'composition': composition,
                    'layerPriority': 'outfit-over-base' if composition == 'layers' else 'pinned-base-palms; clothing-over-forearms',
                    'settings': {'rows': rows, 'cols': cols, 'colors': colors, 'outline': outline,
