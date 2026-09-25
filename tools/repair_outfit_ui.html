@@ -120,6 +120,10 @@
       </div>
       <div class="advanced">
         <p class="section-title">Hoàn thiện pixel</p>
+        <label>Cách ghép<select id="composition">
+          <option value="layers" selected>Outfit trên base · cắt vùng da</option>
+          <option value="pinned">Khóa đầu/tay theo profile cũ</option>
+        </select></label>
         <label class="check"><input id="outline" type="checkbox" checked> Hoàn thiện viền, giữ nét vải mảnh</label>
         <label>Tô lại mảng màu<select id="paint">
           <option value="0">Chỉ giới hạn màu</option>
@@ -128,11 +132,12 @@
           <option value="3" selected>Tô lại vật liệu · sáng / nền / bóng</option>
         </select></label>
         <label>Xóa cụm rời nhỏ hơn<input id="cleanup" type="number" min="0" max="16" value="3"></label>
-        <p class="hint">Đầu và bàn tay lấy tại vị trí cố định của base. Tay áo che cánh tay; vùng đầu/tay có thể sửa trên khung base rồi lưu để dùng lại với outfit khác.</p>
+        <p class="hint">Trang phục ở trên base. Vùng cắt trên outfit để lộ đầu, tay và chân gốc bên dưới.</p>
       </div>
       <div class="actions">
         <button id="repair" class="primary" type="button">Xử lý sprite</button>
         <button id="download" class="secondary" type="button" disabled>Tải PNG kết quả</button>
+        <button id="downloadOutfit" class="secondary" type="button" disabled>Tải riêng lớp outfit</button>
       </div>
       <p id="fileNotice" class="hint" hidden>Mở giao diện qua <a href="http://127.0.0.1:8765/">server local</a> để xử lý ảnh.</p>
       <div id="status" class="status" role="status">Chọn đủ hai ảnh để bắt đầu.</div>
@@ -171,7 +176,7 @@
         </div>
         <div class="toolbar edit-tools">
           <label>Cọ chỉnh vùng<select id="brush">
-            <option value="inspect">Chỉ xem</option><option value="base">Lấy base (đỏ)</option>
+            <option value="inspect">Chỉ xem</option><option value="base">Xóa outfit để lộ base</option>
             <option value="outfit">Giữ outfit (xanh dương)</option><option value="erase">Xóa (xanh lá)</option>
             <option value="auto">Trả về tự động</option>
             <option value="profileHead">Sửa đầu trên base</option>

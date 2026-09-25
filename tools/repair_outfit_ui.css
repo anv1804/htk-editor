@@ -1,0 +1,329 @@
+/* HKT Pixel Forge · Custom Utilities for Tailwind CSS */
+
+/* Pixel-perfect rendering */
+canvas, img, .pixelated {
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #14161b; }
+::-webkit-scrollbar-thumb { background: #2b3240; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3e4759; }
+
+/* Checkerboard transparent bg */
+.checkerboard-bg, [data-zoom-container] {
+  background-color: #16181f;
+  background-image:
+    linear-gradient(45deg, #1e222b 25%, transparent 25%),
+    linear-gradient(-45deg, #1e222b 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1e222b 75%),
+    linear-gradient(-45deg, transparent 75%, #1e222b 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 0 7px, 7px -7px, -7px 0px;
+}
+
+/* 3 Canvas Viewports */
+.frame-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.375rem;
+  height: 100%;
+}
+
+/* ===== RESIZABLE SPLITTERS ===== */
+.splitter-v {
+  width: 5px;
+  cursor: col-resize;
+  background: #1a1e27;
+  border-left: 1px solid #282f3c;
+  border-right: 1px solid #282f3c;
+  flex-shrink: 0;
+  z-index: 5;
+  transition: background 0.15s ease;
+  position: relative;
+}
+.splitter-v::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1px;
+  height: 24px;
+  background: #3e4759;
+  border-radius: 1px;
+  transition: background 0.15s ease;
+}
+.splitter-v:hover, .splitter-v.dragging {
+  background: rgba(45, 212, 191, 0.15);
+}
+.splitter-v:hover::after, .splitter-v.dragging::after {
+  background: #2dd4bf;
+  height: 32px;
+  width: 2px;
+}
+
+.splitter-h {
+  height: 5px;
+  cursor: row-resize;
+  background: #1a1e27;
+  border-top: 1px solid #282f3c;
+  border-bottom: 1px solid #282f3c;
+  flex-shrink: 0;
+  z-index: 5;
+  transition: background 0.15s ease;
+  position: relative;
+}
+.splitter-h::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 1px;
+  width: 24px;
+  background: #3e4759;
+  border-radius: 1px;
+  transition: background 0.15s ease;
+}
+.splitter-h:hover, .splitter-h.dragging {
+  background: rgba(45, 212, 191, 0.15);
+}
+.splitter-h:hover::after, .splitter-h.dragging::after {
+  background: #2dd4bf;
+  width: 32px;
+  height: 2px;
+}
+
+/* ===== TOOLBOX BUTTONS ===== */
+.aseprite-vertical-toolbox .tool-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #242934;
+  border: 1px solid #333a4a;
+  border-radius: 3px;
+  color: #e2e8f0;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+  box-shadow: inset 1px 1px 0px rgba(255,255,255,0.05), inset -1px -1px 0px rgba(0,0,0,0.35);
+}
+.aseprite-vertical-toolbox .tool-btn:hover {
+  background: #2f3645;
+  border-color: #4b5568;
+}
+.aseprite-vertical-toolbox .tool-btn.active {
+  background: #143538;
+  border-color: #2dd4bf;
+  color: #2dd4bf;
+  box-shadow: inset 1px 1px 2px rgba(0,0,0,0.6), 0 0 5px rgba(45, 212, 191, 0.3);
+}
+
+/* Profile target buttons: glow orange/red when their target is active */
+.aseprite-vertical-toolbox .profile-target-btn.target-active {
+  background: #2a1a10;
+  border-color: #fb923c;
+  box-shadow: 0 0 6px rgba(251, 146, 60, 0.4);
+}
+.aseprite-vertical-toolbox .profile-target-btn[data-profile-target="head"].target-active {
+  border-color: #f87171;
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.4);
+}
+
+.tool-separator {
+  width: 18px;
+  height: 1px;
+  background: #2d3442;
+  margin: 1px 0;
+}
+
+/* Color Swatch */
+.tool-color-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  border: 1.5px solid #4b5568;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.tool-color-swatch input[type="color"] {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 50px;
+  height: 50px;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* ===== TIMELINE ===== */
+.anim-row {
+  display: flex;
+  align-items: center;
+  background: #1b1f27;
+  border: 1px solid #282f3c;
+  border-radius: 3px;
+  padding: 2px 4px;
+  gap: 6px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.anim-row:hover { background: #222732; border-color: #374151; }
+.anim-row.current-row {
+  background: #1c262e;
+  border-color: #14b8a6;
+  box-shadow: 0 0 6px rgba(20, 184, 166, 0.12);
+}
+
+.anim-row-title-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 110px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.anim-row-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.anim-row-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.current-row .anim-row-label { color: #2dd4bf; }
+
+.anim-frames-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 1px;
+}
+
+.frame-card {
+  width: 40px;
+  height: 44px;
+  background: #14171e;
+  border: 1px solid #2d3442;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.12s;
+}
+.frame-card:hover { border-color: #4b5568; background: #1e232e; }
+.frame-card.active {
+  background: #123438;
+  border-color: #2dd4bf;
+  box-shadow: 0 0 5px rgba(45, 212, 191, 0.35);
+}
+
+.frame-card-idx {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 8px;
+  color: #94a3b8;
+  line-height: 1;
+}
+.frame-card.active .frame-card-idx { color: #2dd4bf; font-weight: 700; }
+
+.frame-card-canvas-box {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d0f13;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.frame-card-canvas-box canvas { width: 30px; height: 30px; display: block; }
+
+/* Mini inputs & buttons */
+.as-input-mini {
+  background: #16181f;
+  border: 1px solid #2e3544;
+  color: #f1f5f9;
+  border-radius: 3px;
+  font-size: 10px;
+  padding: 1px 4px;
+}
+.as-input-mini:focus {
+  outline: none;
+  border-color: #2dd4bf;
+  box-shadow: 0 0 0 1px #2dd4bf;
+}
+
+.as-btn-mini {
+  background: #242934;
+  border: 1px solid #333a4a;
+  color: #e2e8f0;
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+  user-select: none;
+}
+.as-btn-mini:hover:not(:disabled) { background: #2f3645; border-color: #4b5568; }
+.as-btn-mini:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Result stage */
+.result-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.result-stage .placeholder { color: #64748b; font-size: 11px; }
+.result-stage.loaded .placeholder { display: none; }
+
+/* Prevent body resize flash during splitter drag */
+body.resizing-panels { cursor: col-resize !important; }
+body.resizing-panels * { cursor: inherit !important; pointer-events: none !important; }
+body.resizing-panels .splitter-v,
+body.resizing-panels .splitter-h { pointer-events: auto !important; }
+body.resizing-v { cursor: col-resize !important; }
+body.resizing-h { cursor: row-resize !important; }
+
+/* Force 3 viewports to stay in 1 row regardless of JS grid template */
+.frame-grid {
+  display: flex !important;
+  flex-direction: row !important;
+  width: 100% !important;
+}
+.frame-grid > div {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  width: 0 !important;
+}
+
+/* Override checkerboard for better contrast against dark sprite outlines */
+.checkerboard-bg, [data-zoom-container] {
+  background-color: #64748b !important;
+  background-image:
+    linear-gradient(45deg, #94a3b8 25%, transparent 25%),
+    linear-gradient(-45deg, #94a3b8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #94a3b8 75%),
+    linear-gradient(-45deg, transparent 75%, #94a3b8 75%) !important;
+  background-size: 16px 16px !important;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px !important;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+}

@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = id => document.getElementById(id);
-const settings = ["rows", "cols", "colors", "threshold", "outline", "paint", "cleanup"];
+const settings = ["rows", "cols", "colors", "threshold", "outline", "paint", "cleanup", "composition"];
 const state = { base: null, outfit: null, result: null, mask: null, report: null, undo: [], busy: false, revision: 0 };
 const corrections = document.createElement("canvas");
 const correctionContext = corrections.getContext("2d", { willReadFrequently: true });
@@ -84,6 +84,7 @@ function invalidate(message = "Thiết lập đã đổi. Bấm Xử lý sprite 
   state.revision++;
   $("download").disabled = true;
   $("downloadReport").disabled = true;
+  $("downloadOutfit").disabled = true;
   if (state.base && state.outfit) status(message);
 }
 function clearResult() {
@@ -137,13 +138,26 @@ function render() {
   drawCrop($("outfitCanvas"), state.outfit, g);
   const ctx = drawCrop($("editCanvas"), state.result || state.outfit, g);
   if (g) {
+    // Show the cut against the original base immediately while brushing.
+    // The colored correction overlay remains optional, above the preview.
+    const labels = correctionContext.getImageData(g.x,g.y,g.w,g.h).data;
+    const source = document.createElement('canvas'); source.width=g.w; source.height=g.h;
+    const sourceCtx = source.getContext('2d');
+    if (state.base) sourceCtx.drawImage(state.base,g.x,g.y,g.w,g.h,0,0,g.w,g.h);
+    const basePixels = sourceCtx.getImageData(0,0,g.w,g.h).data;
+    const preview = ctx.getImageData(0,0,g.w,g.h);
+    for (let i=0;i<labels.length;i+=4) if (labels[i+3]>=128) {
+      if (labels[i]>200 && labels[i+1]<100) preview.data.set(basePixels.slice(i,i+4),i);
+      if (labels[i+1]>200 && labels[i]<100) preview.data.fill(0,i,i+4);
+    }
+    ctx.putImageData(preview,0,0);
     ctx.drawImage(paintLayer, g.x, g.y, g.w, g.h, 0, 0, g.w, g.h);
     if ($("showMask").checked && state.mask) {
       ctx.globalAlpha = Number($("maskOpacity").value) / 100;
       ctx.drawImage(state.mask, g.x, g.y, g.w, g.h, 0, 0, g.w, g.h);
     }
     ctx.globalAlpha = 0.65;
-    ctx.drawImage(corrections, g.x, g.y, g.w, g.h, 0, 0, g.w, g.h);
+    if ($("showMask").checked) ctx.drawImage(corrections, g.x, g.y, g.w, g.h, 0, 0, g.w, g.h);
     ctx.globalAlpha = 1;
   }
   $("undo").disabled = !state.undo.length || state.busy;
@@ -323,24 +337,28 @@ $("repair").onclick = async () => {
   $("download").disabled = $("downloadReport").disabled = true;
   status("Đang tách vùng, tô màu và hoàn thiện viền…");
   try {
-    await ensureProfile();
+    if ($("composition").value === 'pinned') await ensureProfile();
     const response = await fetch("/api/repair", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
       base: state.base.src, outfit: state.outfit.src, rows: g.rows, cols: g.cols,
       colors: Number($("colors").value), backgroundThreshold: Number($("threshold").value), skinExpand: 0,
       outline: $("outline").checked, cleanup: Number($("cleanup").value), paint: Number($("paint").value), overrides: corrections.toDataURL(),
-      lockBase: true, baseProfile: baseMap.toDataURL(), retouch: paintLayer.toDataURL()
+      composition: $("composition").value,
+      lockBase: true, baseProfile: $("composition").value === 'pinned' ? baseMap.toDataURL() : null, retouch: paintLayer.toDataURL()
     }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Không xử lý được ảnh.");
+    if (!result.report?.composition) throw new Error("Server chưa cập nhật chế độ ghép lớp. Khởi động lại server.");
     if ((result.report?.version || 0) < 5) throw new Error("Server đang chạy thuật toán cũ. Khởi động lại tools/repair_outfit_ui.py để dùng bản tô màu giữ nếp áo và đai.");
     const [image, mask] = await Promise.all([loadImage(result.image), loadImage(result.mask)]);
     if (revision !== state.revision) return status("Thiết lập đã đổi trong khi xử lý. Bấm Xử lý sprite để cập nhật.");
     state.result = image; state.mask = mask; state.report = result.report;
+    state.outfitLayer = result.outfitLayer;
+    $("downloadOutfit").disabled = false;
     $("resultPreview").src = result.image;
     $("resultStage").classList.add("loaded");
     $("resultMeta").textContent = `${result.width} × ${result.height} · ${result.frameCount} frame · ${result.paletteColors} màu`;
     $("download").disabled = $("downloadReport").disabled = false;
-    status(`Hoàn tất: ${result.paletteColors} màu. Đầu/tay dùng bản đồ base cố định; ${result.restoredPixels.toLocaleString("vi-VN")} pixel lấy từ base. Có thể sửa bản đồ hoặc tô màu/bóng trực tiếp rồi xử lý lại.`);
+    status(`Hoàn tất: ${result.paletteColors} màu. ${result.report.composition === 'layers' ? 'Outfit ở trên base; vùng da đã cắt để lộ base bên dưới.' : 'Đang dùng profile đầu/tay cố định.'}`);
     remember();
   } catch (error) {
     status(error instanceof TypeError ? "Không kết nối được server. Chạy tools/repair_outfit_ui.py rồi mở http://127.0.0.1:8765/." : error.message, true);
@@ -349,6 +367,7 @@ $("repair").onclick = async () => {
   }
 };
 $("download").onclick = () => { if (state.result) download(state.result.src, "outfit-repaired.png"); };
+$("downloadOutfit").onclick = () => { if (state.outfitLayer) download(state.outfitLayer, "outfit-layer.png"); };
 $("downloadReport").onclick = () => {
   if (!state.report) return;
   const url = URL.createObjectURL(new Blob([JSON.stringify(state.report, null, 2)], { type: "application/json" }));
@@ -375,6 +394,10 @@ $("downloadReport").onclick = () => {
       }
     }
   } catch (_) { status("Chọn lại ảnh để bắt đầu."); }
+  if (!state.base && location.protocol !== "file:") {
+    try { await setSource("base", "/assets/default-base.png"); }
+    catch (_) { status("Không nạp được base mặc định. Bạn có thể chọn base thủ công.", true); }
+  }
   if (location.protocol === "file:") {
     $("fileNotice").hidden = false; $("repair").disabled = true;
     status("Trang đang mở dạng file. Chạy server local và mở http://127.0.0.1:8765/ để xử lý.", true);

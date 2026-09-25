@@ -14,12 +14,15 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
+import numpy as np
 
 from repair_outfit_sprite import repair_sheet, build_base_profile, base_profile_identity
 
 
 ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = ROOT.parent
 UI_PATH = ROOT / "repair_outfit_ui.html"
+DEFAULT_BASE_PATH = PROJECT_ROOT / "assets" / "default-base.png"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 
 
@@ -79,6 +82,7 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     cleanup = int(payload.get('cleanup', 3))
     paint = int(payload.get('paint', 3))
     outline = payload.get('outline', True)
+    composition = payload.get('composition','layers')
     if not isinstance(outline, bool):
         raise ValueError('Outline must be true or false')
 
@@ -107,12 +111,17 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         outline=outline,
         overrides=overrides,
         return_masks=True,
+        composition=composition,
         lock_base=bool(payload.get('lockBase',True)),
         base_profile=decode_image(payload['baseProfile']) if payload.get('baseProfile') else None,
         retouch=decode_image(payload['retouch']) if payload.get('retouch') else None,
     )
     opaque_colors = len({p[:3] for p in repaired.get_flattened_data() if p[3]}) if hasattr(repaired, 'get_flattened_data') else len({p[:3] for p in repaired.getdata() if p[3]})
+    outfit_layer = np.array(repaired)
+    garment = np.all(np.asarray(mask)[:,:,:3] == [70,155,255],axis=2)
+    outfit_layer[~garment] = 0
     return {
+        'outfitLayer': encode_png(Image.fromarray(outfit_layer)),
         "image": encode_png(repaired),
         "width": repaired.width,
         "height": repaired.height,
@@ -124,7 +133,8 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         'paletteColors': opaque_colors,
         'mask': encode_png(mask),
         'report': {'version': 5, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
-                   'layerPriority': 'pinned-base-palms; clothing-over-forearms',
+                   'composition': composition,
+                   'layerPriority': 'outfit-over-base' if composition == 'layers' else 'pinned-base-palms; clothing-over-forearms',
                    'settings': {'rows': rows, 'cols': cols, 'colors': colors, 'outline': outline,
                                 'paint': paint, 'cleanup': cleanup, 'backgroundThreshold': threshold},
                    'frames': frames},
@@ -149,6 +159,9 @@ class RepairHandler(BaseHTTPRequestHandler):
             return
         if self.path == '/repair_outfit_ui.js':
             self.send_bytes(200, 'text/javascript; charset=utf-8', (ROOT / 'repair_outfit_ui.js').read_bytes())
+            return
+        if self.path == '/assets/default-base.png' and DEFAULT_BASE_PATH.is_file():
+            self.send_bytes(200, 'image/png', DEFAULT_BASE_PATH.read_bytes())
             return
         self.send_bytes(404, "text/plain; charset=utf-8", b"Not found")
 

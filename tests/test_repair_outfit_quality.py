@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from repair_outfit_sprite import repair_sheet, clean_outfit, luminance, build_base_profile, load_base_profile
+from repair_outfit_sprite import repair_sheet, clean_outfit, luminance, build_base_profile, load_base_profile, repaint
 from repair_outfit_ui import process_request, encode_png, decode_image, analyze_base
 
 
@@ -226,6 +226,16 @@ class ReportedPoseRegressionTests(unittest.TestCase):
 
 
 class PinnedBaseAndPaintTests(unittest.TestCase):
+    def test_broad_fabric_shadow_is_not_stamped_into_a_solid_ink_block(self):
+        rgba=np.zeros((16,16,4),np.uint8)
+        rgba[2:14,2:14]=[125,175,140,255]
+        rgba[6:9,6:9]=[46,70,48,255]
+        garment=rgba[:,:,3]>0
+        result,contours=repaint(rgba,np.zeros_like(garment),garment,
+            colors=16,paint=3,outline=True,cell_size=(16,16))
+        self.assertFalse(np.any(contours[6:9,6:9]))
+        self.assertFalse(np.any(np.all(result[6:9,6:9,:3]==[39,25,32],axis=2)))
+
     def test_saved_profile_round_trip_and_mismatched_base_rejection(self):
         base,_ = fixture()
         result = analyze_base(dict(base=encode_png(base),rows=1,cols=1))
