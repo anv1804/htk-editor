@@ -5,11 +5,47 @@ import numpy as np
 from PIL import Image
 
 from test_layer_composition import fixture
-from repair_outfit_sprite import headwear_mask, repair_sheet
+from repair_outfit_sprite import headwear_mask, remove_color_spurs, repair_sheet
 from repair_outfit_ui import process_request, encode_png, decode_image
 
 
 class V3LayersTests(unittest.TestCase):
+    def test_isolated_midtone_spur_is_removed(self):
+        rgb = np.full((6, 6, 3), [140, 180, 190], np.uint8)
+        mask = np.zeros((6, 6), bool)
+        mask[3, 3] = mask[4, 3] = mask[3, 4] = mask[4, 4] = True
+        mask[2, 2] = True
+        rgb[2, 2] = [190, 150, 140]
+        cleaned, count = remove_color_spurs(rgb, mask)
+        self.assertFalse(cleaned[2, 2])
+        self.assertTrue(cleaned[3, 3])
+        self.assertEqual(count, 1)
+
+    def test_dark_outline_and_highlight_spurs_survive(self):
+        rgb = np.full((8, 8, 3), [140, 180, 190], np.uint8)
+        mask = np.zeros((8, 8), bool)
+        mask[3:5, 3:5] = True
+        mask[2, 2] = True
+        rgb[2, 2] = [35, 25, 34]
+        mask[3:5, 6:8] = True
+        mask[2, 5] = True
+        rgb[2, 5] = [255, 250, 235]
+        cleaned, count = remove_color_spurs(rgb, mask)
+        np.testing.assert_array_equal(cleaned, mask)
+        self.assertEqual(count, 0)
+
+    def test_manual_and_headwear_pixels_are_protected(self):
+        rgb = np.full((6, 6, 3), [140, 180, 190], np.uint8)
+        rgb[2, 2] = [190, 150, 140]
+        mask = np.zeros((6, 6), bool)
+        mask[3, 3] = mask[4, 3] = mask[3, 4] = mask[4, 4] = True
+        mask[2, 2] = True
+        protected = np.zeros_like(mask)
+        protected[2, 2] = True
+        cleaned, count = remove_color_spurs(rgb, mask, protected)
+        np.testing.assert_array_equal(cleaned, mask)
+        self.assertEqual(count, 0)
+
     def test_tan_suit_and_straw_hat_are_not_erased_as_skin(self):
         root = Path(__file__).parent / 'fixtures'
         base = Image.open(root / 'green_outfit' / 'base.png').convert('RGBA')
@@ -24,6 +60,8 @@ class V3LayersTests(unittest.TestCase):
             self.assertGreater(np.all(tile == [255,200,0],axis=2).sum(), 65)
             self.assertGreater(np.all(tile == [70,155,255],axis=2).sum(), 100)
             self.assertEqual(result.size, base.size)
+        frame = labels[6*64:7*64, 0:64, :3]
+        self.assertGreater(np.all(frame == [70,155,255],axis=2).sum(), 250)
 
     def test_real_green_sheet_edge_changes_only_reveal_base(self):
         root = Path(__file__).parent / 'fixtures' / 'green_outfit'
@@ -64,6 +102,34 @@ class V3LayersTests(unittest.TestCase):
         self.assertFalse(np.any((np.array(hair)[:,:,3] > 0) & (np.array(clothing)[:,:,3] > 0)))
         composite = Image.alpha_composite(Image.alpha_composite(base, clothing), hair)
         np.testing.assert_array_equal(np.array(composite), np.array(decode_image(data['image'])))
+
+    def test_trailing_scarf_is_kept_as_one_head_accessory(self):
+        base, outfit = fixture()
+        base.putpixel((13, 7), (39, 25, 32, 255))
+        base.putpixel((14, 7), (39, 25, 32, 255))
+        scarf = (107, 143, 179, 255)
+        for x, y in ((4, 6), (5, 6), (6, 6), (3, 7), (3, 8),
+                     (4, 9), (5, 9), (6, 9), (7, 8)):
+            outfit.putpixel((x, y), scarf)
+        mask = headwear_mask(base, outfit)
+        for point in ((4, 6), (3, 7), (3, 8), (5, 9), (7, 8)):
+            self.assertTrue(mask[point[1], point[0]], point)
+        self.assertFalse(mask[10, 15], 'body fabric must not join the scarf layer')
+
+    def test_trailing_scarf_is_exported_separately_from_outfit(self):
+        base, outfit = fixture()
+        base.putpixel((13, 7), (39, 25, 32, 255))
+        base.putpixel((14, 7), (39, 25, 32, 255))
+        scarf = (107, 143, 179, 255)
+        for x, y in ((4, 6), (5, 6), (6, 6), (3, 7), (3, 8),
+                     (4, 9), (5, 9), (6, 9), (7, 8)):
+            outfit.putpixel((x, y), scarf)
+        data = self.request(base, outfit)
+        hair = decode_image(data['headwearLayer'])
+        clothing = decode_image(data['outfitLayer'])
+        self.assertEqual(hair.getpixel((3, 7)), scarf)
+        self.assertEqual(clothing.getpixel((3, 7))[3], 0)
+        self.assertEqual(clothing.getpixel((10, 15)), outfit.getpixel((10, 15)))
 
     def test_manual_classification_and_retouch_are_exported(self):
         base, outfit = fixture()
