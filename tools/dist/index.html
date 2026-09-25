@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HKT Pixel Forge Outfit Editor v3</title>
+  <script type="module" crossorigin src="/assets/index-BDPaAQyI.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DAArzu3W.css">
+</head>
+<body class="bg-as-bg text-as-text h-screen overflow-hidden flex flex-col font-sans select-none text-sm">
+  
+  <header class="h-12 border-b border-as-border bg-[#14171a] flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
+    <div class="flex items-center gap-3 font-bold text-[14px] shrink-0">
+      <div class="w-7 h-7 rounded bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-slate-950 text-xs font-black shadow-md border border-emerald-400/40">
+        HKT
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="tracking-wide text-slate-100 font-extrabold text-[15px]">HKT Pixel Forge</span>
+        <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800 font-mono font-medium">Outfit Studio v3</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="repair" class="px-3.5 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-bold rounded shadow-lg shadow-emerald-950/50 hover:brightness-110 active:scale-95 transition-all text-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+        <span>⚡</span> Xử lý sprite
+      </button>
+      <button id="download" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tải PNG kết quả</button>
+      <button id="downloadOutfit" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tải riêng Outfit</button>
+      <button id="split" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tách sprite</button>
+      <button id="downloadHeadwear" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tải tóc/mũ</button>
+      <button id="downloadReport" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tải báo cáo</button>
+    </div>
+  </header>
+
+  <main class="flex-1 flex overflow-hidden relative">
+    
+    <aside id="leftPanel" class="w-80 bg-as-panel border-r border-as-border flex z-10 shrink-0">
+      <div class="w-12 flex flex-col items-center bg-[#151719] border-r border-as-border py-2 gap-2 aseprite-vertical-toolbox shrink-0">
+        <button class="tool-btn active" data-brush-val="inspect" title="Chỉ xem / Pan (V, H)">🔍</button>
+        <button class="tool-btn" data-brush-val="color" title="Cọ vẽ màu (B) - Chấm sửa màu chi tiết trên frame">🖌️</button>
+        <button class="tool-btn" data-brush-val="sample" title="Hút màu (I) - Lấy màu từ canvas">💧</button>
+        <button class="tool-btn" data-brush-val="erase" title="Tẩy pixel (E) - Xóa thành trong suốt">🧹</button>
+        <button class="tool-btn" data-brush-val="base" title="Cắt Da / Lộ Base (R) - Cắt outfit tại đây để lộ da base">👤</button>
+        <button class="tool-btn" data-brush-val="outfit" title="Giữ Outfit (U) - Giữ vải/dải lụa, KHÔNG CẮT DA">👕</button>
+        <button class="tool-btn" data-brush-val="headwear" title="Giữ tóc / Phụ kiện đầu (W)">👑</button>
+        <button class="tool-btn" data-brush-val="auto" title="Khôi phục pixel gốc (A) - Xóa vết sửa để trở về tự động">✨</button>
+        <button class="tool-btn" data-brush-val="unpaint" title="Bỏ màu vẽ tay (Shift+E)">🗑️</button>
+        <hr class="w-8 border-as-border my-1">
+        <button class="profile-target-btn" data-profile-target="head" title="Sửa Đầu (X / H)">ĐẦU</button>
+        <button class="profile-target-btn" data-profile-target="hand" title="Sửa Tay (X / J)">TAY</button>
+        <hr class="w-8 border-as-border my-1">
+        <button id="btnToolSymmetry" class="tool-btn" title="Vẽ Đối Xứng Trục Dọc (Symmetry X)">🪞</button>
+        <button id="btnToolGrid" class="tool-btn" title="Bật/Tắt Lưới Pixel (Grid #)">#️⃣</button>
+        
+        <div class="mt-auto relative group flex flex-col items-center gap-2 pb-2">
+            <select id="brushSize" class="bg-as-subpanel border border-as-border text-xs rounded w-10 text-center custom-select">
+               <option value="1">1</option>
+               <option value="2">2</option>
+               <option value="3">3</option>
+               <option value="4">4</option>
+               <option value="5">5</option>
+               <option value="6">6</option>
+               <option value="8">8</option>
+            </select>
+            <div id="colorSwatchPreview" class="w-6 h-6 rounded border border-as-border cursor-pointer bg-[#90b9bb]" title="Paint Color"></div>
+            <input id="paintColor" type="color" value="#90b9bb" class="absolute bottom-2 left-0 w-full h-6 opacity-0 cursor-pointer">
+        </div>
+        <select id="brush" class="hidden">
+          <option value="inspect">Chỉ xem</option>
+          <option value="base">Xóa outfit để lộ base</option>
+          <option value="outfit">Giữ outfit (xanh dương)</option>
+          <option value="erase">Xóa (xanh lá)</option>
+          <option value="headwear">Giữ tóc + phụ kiện đầu (vàng)</option>
+          <option value="auto">Trả về tự động</option>
+          <option value="profileHead">Sửa đầu trên base</option>
+          <option value="profileHand">Sửa bàn tay trên base</option>
+          <option value="profileErase">Bỏ vùng nhận nhầm trên base</option>
+          <option value="color">Tô màu kết quả</option>
+          <option value="sample">Hút màu kết quả</option>
+          <option value="unpaint">Bỏ màu tô tay</option>
+        </select>
+      </div>
+      
+      <div class="flex-1 flex flex-col p-3 gap-2.5 text-xs overflow-hidden select-none">
+        <div class="grid grid-cols-2 gap-2 shrink-0">
+          <div class="flex flex-col">
+            <div class="flex justify-between items-center mb-1 text-[10px]">
+              <span class="font-bold text-as-muted uppercase">Base</span>
+              <span id="baseMeta" class="text-as-muted truncate w-14 text-right font-mono text-[9px]"></span>
+            </div>
+            <div id="baseDrop" class="drop h-16 border border-dashed border-as-border rounded hover:border-as-accent" tabindex="0">
+              <input id="baseFile" type="file" accept="image/png,image/webp,image/jpeg">
+              <div class="placeholder text-center text-as-muted text-[10px] leading-tight"><span class="text-sm block font-bold">+</span>Base</div>
+              <img id="basePreview" alt="Base">
+            </div>
+          </div>
+          
+          <div class="flex flex-col">
+            <div class="flex justify-between items-center mb-1 text-[10px]">
+              <span class="font-bold text-as-muted uppercase">Outfit</span>
+              <span id="outfitMeta" class="text-as-muted truncate w-14 text-right font-mono text-[9px]"></span>
+            </div>
+            <div id="outfitDrop" class="drop h-16 border border-dashed border-as-border rounded hover:border-as-accent" tabindex="0">
+              <input id="outfitFile" type="file" accept="image/png,image/webp,image/jpeg">
+              <div class="placeholder text-center text-as-muted text-[10px] leading-tight"><span class="text-sm block font-bold">+</span>Outfit</div>
+              <img id="outfitPreview" alt="Outfit">
+            </div>
+          </div>
+        </div>
+
+        <div class="border border-as-border bg-[#151719] rounded p-2 flex flex-col gap-1.5 shrink-0">
+          <div class="flex justify-between items-center text-[10px] text-as-muted font-bold uppercase">
+            <span>Bảng màu Tiên Hiệp</span>
+            <span id="paletteColorCode" class="font-mono text-teal-400">#90b9bb</span>
+          </div>
+          <div id="paletteSwatches" class="flex flex-wrap gap-1 items-center">
+            <div class="palette-swatch" data-color="#ffffff" style="background:#ffffff" title="Bạch y (#ffffff)"></div>
+            <div class="palette-swatch" data-color="#d4e8e1" style="background:#d4e8e1" title="Ngọc tiêu (#d4e8e1)"></div>
+            <div class="palette-swatch" data-color="#8fbcd4" style="background:#8fbcd4" title="Lam sa (#8fbcd4)"></div>
+            <div class="palette-swatch" data-color="#2a5caa" style="background:#2a5caa" title="Huyền lam (#2a5caa)"></div>
+            <div class="palette-swatch" data-color="#2c3e50" style="background:#2c3e50" title="Mặc vũ (#2c3e50)"></div>
+            <div class="palette-swatch" data-color="#121214" style="background:#121214" title="Hắc kim (#121214)"></div>
+            <div class="palette-swatch" data-color="#c0392b" style="background:#c0392b" title="Chu sa (#c0392b)"></div>
+            <div class="palette-swatch" data-color="#e67e22" style="background:#e67e22" title="Xích diễm (#e67e22)"></div>
+            <div class="palette-swatch" data-color="#f1c40f" style="background:#f1c40f" title="Hoàng kim (#f1c40f)"></div>
+            <div class="palette-swatch" data-color="#f5e6cb" style="background:#f5e6cb" title="Bạch ngọc (#f5e6cb)"></div>
+            <div class="palette-swatch" data-color="#e8b298" style="background:#e8b298" title="Da sáng (#e8b298)"></div>
+            <div class="palette-swatch" data-color="#c78366" style="background:#c78366" title="Da ấm (#c78366)"></div>
+            <div class="palette-swatch" data-color="#27ae60" style="background:#27ae60" title="Thanh ngọc (#27ae60)"></div>
+            <div class="palette-swatch" data-color="#16a085" style="background:#16a085" title="Bích lục (#16a085)"></div>
+            <div class="palette-swatch" data-color="#8e44ad" style="background:#8e44ad" title="Tử y (#8e44ad)"></div>
+            <div class="palette-swatch" data-color="#5b2c6f" style="background:#5b2c6f" title="Ám tử (#5b2c6f)"></div>
+          </div>
+        </div>
+
+        <div class="border border-as-border bg-[#151719] rounded p-2 flex flex-col gap-2 shrink-0 text-[11px]">
+          <div class="font-bold text-as-muted uppercase text-[10px]">Thiết lập Sheet & Màu</div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center justify-between text-as-muted">Cột <input id="cols" type="number" min="1" max="64" value="4" class="as-input w-14 text-center"></label>
+            <label class="flex items-center justify-between text-as-muted">Hàng <input id="rows" type="number" min="1" max="64" value="7" class="as-input w-14 text-center"></label>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex flex-col text-as-muted text-[10px]">Giới hạn màu
+              <select id="colors" class="as-select mt-0.5">
+                <option value="0">Giữ gốc</option>
+                <option value="16">16 màu</option>
+                <option value="24">24 màu</option>
+                <option value="32" selected>32 màu</option>
+                <option value="64">64 màu</option>
+                <option value="128">128 màu</option>
+              </select>
+            </label>
+            <label class="flex flex-col text-as-muted text-[10px]">Ngưỡng nền
+              <input id="threshold" type="number" min="1" max="255" value="36" class="as-input mt-0.5 text-center">
+            </label>
+          </div>
+        </div>
+
+        <div class="border border-as-border bg-[#151719] rounded p-2 flex flex-col gap-2 shrink-0 text-[11px]">
+          <div class="font-bold text-as-muted uppercase text-[10px]">Thuật toán xử lý</div>
+          <label class="flex flex-col text-as-muted text-[10px]">Cách ghép
+            <select id="composition" class="as-select mt-0.5">
+              <option value="layers" selected>Outfit trên base · cắt da</option>
+              <option value="pinned">Khóa đầu/tay theo profile</option>
+            </select>
+          </label>
+          <div class="flex items-center justify-between pt-0.5">
+            <span class="text-as-text text-[11px] font-medium">Hoàn thiện viền mảnh</span>
+            <label class="as-switch"><input id="outline" type="checkbox" checked><span class="as-switch-slider"></span></label>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex flex-col text-as-muted text-[10px]">Tô lại mảng
+              <select id="paint" class="as-select mt-0.5">
+                <option value="0">Chỉ màu</option>
+                <option value="1">12 màu</option>
+                <option value="2">6 màu</option>
+                <option value="3" selected>Sáng/nền/bóng</option>
+              </select>
+            </label>
+            <label class="flex flex-col text-as-muted text-[10px]">Dọn cụm rời
+              <input id="cleanup" type="number" min="0" max="16" value="3" class="as-input mt-0.5 text-center">
+            </label>
+          </div>
+        </div>
+
+        <p id="fileNotice" class="text-as-danger hidden text-[11px]">Mở giao diện qua server local để xử lý.</p>
+        <div id="status" class="mt-auto p-1.5 border border-as-border bg-as-subpanel rounded text-[10px] text-as-muted flex items-center gap-1.5 truncate">
+          <span class="w-2 h-2 rounded-full bg-teal-400 shrink-0 animate-pulse"></span>
+          <span class="truncate">Chọn ảnh để bắt đầu.</span>
+        </div>
+      </div>
+    </aside>
+    
+    <div id="leftSplitter" class="w-1 bg-as-border hover:bg-as-accent cursor-col-resize shrink-0 z-20 transition-colors"></div>
+
+    <section class="flex-1 flex flex-col relative min-w-0 bg-[#0d0f11]">
+      <div class="h-9 border-b border-as-border bg-[#14171a] flex items-center justify-between px-3 gap-2 shrink-0 text-xs shadow-sm z-20">
+        <div class="flex items-center gap-1 bg-[#101214] p-0.5 rounded border border-as-border">
+          <button id="tabBtnInspector" class="px-3 py-1 rounded text-xs font-bold transition-colors active bg-as-subpanel text-teal-300">🔍 So sánh & Tô sửa</button>
+          <button id="tabBtnSheet" class="px-3 py-1 rounded text-xs font-bold transition-colors text-slate-400 hover:text-slate-200">📑 Full Spritesheet</button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <div id="profileTargetBadge" class="hidden px-2 py-0.5 bg-as-accent-dark text-as-accent border border-as-accent rounded-full font-bold text-[10px]">🧑 ĐẦU</div>
+          <button id="btnToggleGrid" class="px-2 py-1 bg-as-subpanel border border-as-border rounded hover:bg-as-border text-[11px] font-bold text-slate-300 transition-colors" title="Bật/Tắt Lưới Pixel (Grid Ctrl+')">#️⃣ Lưới</button>
+          <button id="btnToggleSymmetry" class="px-2 py-1 bg-as-subpanel border border-as-border rounded hover:bg-as-border text-[11px] font-bold text-slate-300 transition-colors" title="Vẽ Đối Xứng Trục Dọc (Symmetry M)">🪞 Đối Xứng</button>
+          <button id="btnToggleOnion" class="px-2 py-1 bg-as-subpanel border border-as-border rounded hover:bg-as-border text-[11px] font-bold text-amber-300 transition-colors" title="Bóng mờ frame (Onion Skin O)">🧅 Onion</button>
+          <button id="btnToggleBg" class="px-2.5 py-1 bg-as-subpanel border border-as-border rounded hover:bg-as-border text-[11px] font-bold text-teal-300 transition-colors" title="Đổi màu nền Canvas (Xám / Tối / Sáng / Xanh)">🏁 Đổi nền</button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-as-muted hidden" id="resultMeta"></span>
+          <button id="btnZoomOut" class="w-6 h-6 flex items-center justify-center bg-as-subpanel border border-as-border rounded hover:bg-as-border text-xs font-bold" title="Thu nhỏ">-</button>
+          <span id="zoomPercent" class="w-12 text-center font-mono font-bold text-teal-400 text-xs">400%</span>
+          <button id="btnZoomIn" class="w-6 h-6 flex items-center justify-center bg-as-subpanel border border-as-border rounded hover:bg-as-border text-xs font-bold" title="Phóng to">+</button>
+          <button id="btnZoomReset" class="px-2 h-6 flex items-center justify-center bg-as-subpanel border border-as-border rounded hover:bg-as-border text-[11px] font-bold" title="Đặt lại zoom 400%">4x</button>
+          <button id="btnZoomFit" class="px-2.5 h-6 flex items-center justify-center bg-as-subpanel border border-as-border rounded hover:bg-as-border text-[11px] font-bold text-teal-300 hover:text-teal-200" title="Căn giữa toàn bộ canvas (Fit View)">🎯 Căn giữa</button>
+          <select id="zoom" class="hidden"><option value="4" selected>4</option></select>
+          <select id="sheetZoom" class="hidden"><option value="2" selected>2</option></select>
+        </div>
+      </div>
+
+      <div class="flex-1 relative overflow-hidden">
+        <div id="inspectorTab" data-zoom-container class="absolute inset-0 overflow-hidden bg-[#111316] select-none">
+           <div id="inspectorContent" class="min-w-full min-h-full flex items-center justify-center p-8 w-fit h-fit transition-none will-change-transform pointer-events-auto">
+               <div class="frame-grid flex items-center justify-center gap-6">
+                   <!-- 1. BASE VIEWPORT -->
+                   <div class="viewport-card">
+                       <div class="viewport-header">
+                           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-slate-400"></span> Base</span>
+                           <span class="text-[9px] font-mono text-slate-400">64×64</span>
+                       </div>
+                       <div class="canvas-container canvas-bg-neutral">
+                           <canvas id="baseCanvas" width="64" height="64" class="pixelated"></canvas>
+                           <div class="symmetry-guide"></div>
+                       </div>
+                   </div>
+
+                   <!-- 2. OUTFIT VIEWPORT -->
+                   <div class="viewport-card">
+                       <div class="viewport-header">
+                           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-400"></span> Outfit</span>
+                           <span class="text-[9px] font-mono text-slate-400">64×64</span>
+                       </div>
+                       <div class="canvas-container canvas-bg-neutral">
+                           <canvas id="outfitCanvas" width="64" height="64" class="pixelated"></canvas>
+                           <div class="symmetry-guide"></div>
+                       </div>
+                   </div>
+
+                   <!-- 3. EDIT / RESULT VIEWPORT -->
+                   <div class="viewport-card">
+                       <div class="viewport-header">
+                           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> <span class="text-emerald-400 font-bold">Result</span></span>
+                           <span class="text-[9px] font-mono text-emerald-400 font-bold">64×64</span>
+                       </div>
+                       <div class="canvas-container canvas-bg-neutral">
+                           <canvas id="editCanvas" width="64" height="64" class="pixelated"></canvas>
+                           <div class="symmetry-guide"></div>
+                       </div>
+                   </div>
+               </div>
+           </div>
+           
+           <!-- Aseprite Pixel Ghost Box Cursor -->
+           <div id="pixelCursorBox"></div>
+
+           <!-- Floating Brush Size HUD -->
+           <div id="brushSizeHUD">🖌️ Cọ: 1px</div>
+
+           <!-- Coordinate & Color Live HUD -->
+           <div id="canvasCoordHUD">
+               <span id="coordBadge">X: --, Y: --</span>
+               <span id="coordHexBadge" class="text-teal-400 font-bold">#------</span>
+           </div>
+        </div>
+
+        <div id="sheetTab" data-zoom-container class="absolute inset-0 hidden overflow-hidden bg-[#111316] select-none">
+            <div id="sheetContent" class="min-w-full min-h-full flex items-center justify-center p-8 w-fit h-fit transition-none will-change-transform pointer-events-auto">
+                <div class="flex flex-col items-center min-w-max">
+                    <div id="resultStage" class="result-stage mb-8">
+                        <img id="resultPreview" draggable="false" alt="Sprite outfit" class="pixelated shadow-2xl border border-[#555] bg-black/20 cursor-pointer select-none">
+                    </div>
+                    <div id="splitPreview" hidden class="flex gap-8">
+                        <div class="flex flex-col items-center">
+                            <h3 class="text-xs mb-2 font-bold px-2 py-1 bg-black/60 rounded">Trang phục</h3>
+                            <div class="result-stage loaded"><img id="clothingPreview" draggable="false" alt="Trang phục" class="pixelated shadow-2xl border border-[#555] bg-black/20 select-none"></div>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <h3 class="text-xs mb-2 font-bold px-2 py-1 bg-black/60 rounded">Tóc + phụ kiện</h3>
+                            <div class="result-stage loaded"><img id="headwearPreview" draggable="false" alt="Tóc và phụ kiện đầu" class="pixelated shadow-2xl border border-[#555] bg-black/20 select-none"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      </div>
+
+      <div id="bottomSplitter" class="h-1 bg-as-border hover:bg-as-accent cursor-row-resize shrink-0 z-20 transition-colors"></div>
+      
+      <div id="bottomPanel" class="h-44 bg-[#111315] border-t border-as-border flex flex-col shrink-0 z-10">
+        <div class="h-7 border-b border-as-border flex items-center px-2 gap-2 bg-[#151719] text-[11px] font-bold">
+             Timeline Matrix
+             <div class="flex-1"></div>
+             <button id="prev" class="px-2 py-0.5 bg-as-subpanel border border-as-border rounded hover:bg-as-border">&lt; Prev Frame</button>
+             <input id="frame" type="number" value="1" min="1" max="28" class="w-12 bg-as-subpanel border border-as-border text-center rounded py-0.5">
+             <button id="next" class="px-2 py-0.5 bg-as-subpanel border border-as-border rounded hover:bg-as-border">Next Frame &gt;</button>
+             <div class="w-2"></div>
+             <button id="btnResetFrameAll" class="px-2 py-0.5 bg-as-subpanel border border-as-border rounded hover:bg-as-border text-as-danger">Reset Frame</button>
+             <button id="clearFrame" class="px-2 py-0.5 bg-as-subpanel border border-as-border rounded hover:bg-as-border text-as-danger">Clear Edits</button>
+        </div>
+        <div id="timelineMatrixScroll" class="flex-1 overflow-auto p-2">
+            <!-- Rendered by JS -->
+        </div>
+      </div>
+    </section>
+
+    <div id="rightSplitter" class="w-1 bg-as-border hover:bg-as-accent cursor-col-resize shrink-0 z-20 transition-colors"></div>
+
+    <aside id="rightPanel" class="w-64 bg-as-panel border-l border-as-border flex flex-col z-10 shrink-0 text-xs">
+      <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
+        
+        <div class="border border-as-border bg-[#151719] rounded flex flex-col overflow-hidden">
+          <div class="h-6 bg-as-panel border-b border-as-border flex justify-between items-center px-2 font-bold uppercase text-[10px] text-as-muted">
+            <span>Preview</span>
+            <span id="playerAnimName">Idle</span>
+          </div>
+          <div class="p-2 flex justify-center canvas-bg-neutral h-32 relative border-b border-as-border">
+            <canvas id="animPreviewCanvas" width="64" height="64" class="pixelated h-full w-auto object-contain"></canvas>
+            <div id="currentAnimBadge" class="hidden"></div>
+          </div>
+          <div class="p-2 border-t border-as-border flex items-center gap-2 bg-as-panel">
+            <button id="btnPlayPause" class="flex-1 py-1 bg-as-border hover:bg-as-subpanel rounded font-bold">▶ PLAY</button>
+            <select id="animFpsSelect" class="bg-as-subpanel border border-as-border p-1 rounded w-16">
+              <option value="6">6fps</option><option value="8">8fps</option><option value="12" selected>12fps</option>
+            </select>
+            <span id="playerFrameBadge" class="bg-as-bg px-1.5 py-0.5 rounded border border-as-border font-mono">F1</span>
+          </div>
+        </div>
+
+        <div class="border border-as-border rounded p-3 flex flex-col gap-2 bg-[#151719]">
+          <div class="font-bold text-as-muted uppercase text-[10px] mb-1">Layers & Masks</div>
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] text-as-text font-medium">Xem vùng ghép tự động</span>
+            <label class="as-switch"><input id="showMask" type="checkbox"><span class="as-switch-slider"></span></label>
+          </div>
+          <div class="flex items-center gap-2 my-1">
+            <span class="text-as-muted text-[11px]">Độ mờ:</span>
+            <input id="maskOpacity" type="range" min="0" max="80" value="30" class="as-slider flex-1">
+            <span id="maskOpacityVal" class="text-teal-400 font-mono text-[10px] w-6 text-right">30%</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="undo" class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center disabled:opacity-40" title="Hoàn tác nét vẽ (Ctrl+Z)">Undo (Ctrl+Z)</button>
+            <button id="redo" class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center disabled:opacity-40" title="Làm lại nét vẽ (Ctrl+Y)">Redo (Ctrl+Y)</button>
+            <button id="saveMask" class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center">Lưu Mask</button>
+            <label class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center cursor-pointer">Mở Mask<input id="loadMask" type="file" accept="image/png" hidden></label>
+            <button id="savePaint" class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center">Lưu Màu</button>
+            <label class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center cursor-pointer">Mở lớp màu<input id="loadPaint" type="file" accept="image/png" hidden></label>
+          </div>
+          <div class="mt-1 p-2 bg-as-subpanel/70 rounded border border-as-border text-[10px] space-y-1">
+            <div class="font-bold text-as-muted uppercase tracking-wider text-[9px]">Chế độ Cắt Da · Tô sửa thủ công:</div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span><span><b>Giữ Outfit (U)</b>: Giữ dải lụa/vải (không cắt da)</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0"></span><span><b>Cắt Da (R)</b>: Cắt thủng outfit để lộ da base</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-yellow-400 shrink-0"></span><span><b>Giữ Tóc (W)</b>: Giữ tóc & phụ kiện đầu</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0"></span><span><b>Tẩy (E)</b>: Xóa thành trong suốt</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-teal-400 shrink-0"></span><span><b>Cọ màu (B)</b>: Chấm sửa pixel màu chi tiết</span></div>
+          </div>
+        </div>
+        
+        <div class="border border-as-border rounded p-3 flex flex-col gap-2 bg-[#151719]">
+          <div class="font-bold text-as-muted uppercase text-[10px] mb-1">Profile Landmark</div>
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[11px] text-as-text font-medium">Hiện vùng cố định</span>
+            <label class="as-switch"><input id="showProfile" type="checkbox"><span class="as-switch-slider"></span></label>
+          </div>
+          <div class="grid grid-cols-1 gap-2">
+            <button id="analyzeBase" class="bg-as-subpanel border border-as-border rounded py-1.5 hover:bg-as-border text-center font-bold text-as-accent">Nhận diện lại base</button>
+            <div class="grid grid-cols-2 gap-2 mt-1">
+                <button id="saveProfile" class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center">Lưu JSON</button>
+                <label class="bg-as-subpanel border border-as-border rounded py-1 hover:bg-as-border text-center cursor-pointer">Mở JSON<input id="loadProfile" type="file" accept="application/json" hidden></label>
+            </div>
+          </div>
+          <div id="profileStatus" class="text-[10px] text-as-muted mt-2 leading-relaxed">Bản đồ đầu/tay được nhận diện từ base. Có thể chỉnh và lưu riêng.</div>
+        </div>
+
+      </div>
+    </aside>
+
+  </main>
+
+</body>
+</html>

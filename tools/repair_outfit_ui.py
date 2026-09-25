@@ -22,6 +22,7 @@ from repair_outfit_sprite import repair_sheet, build_base_profile, base_profile_
 ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
 UI_PATH = ROOT / "repair_outfit_ui.html"
+DIST_DIR = ROOT / "dist"
 DEFAULT_BASE_PATH = PROJECT_ROOT / "assets" / "default-base.png"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 
@@ -153,18 +154,45 @@ class RepairHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802
+        # Serve compiled Vite/TS app if present
+        dist_index = DIST_DIR / "index.html"
         if self.path in ("/", "/index.html"):
+            if dist_index.is_file():
+                self.send_bytes(200, "text/html; charset=utf-8", dist_index.read_bytes())
+                return
             self.send_bytes(200, "text/html; charset=utf-8", UI_PATH.read_bytes())
             return
+        if self.path.startswith("/assets/"):
+            dist_file = DIST_DIR / self.path.lstrip("/")
+            if dist_file.is_file():
+                mime = "text/javascript" if dist_file.suffix == ".js" else "text/css" if dist_file.suffix == ".css" else "image/svg+xml" if dist_file.suffix == ".svg" else "application/octet-stream"
+                self.send_bytes(200, f"{mime}; charset=utf-8", dist_file.read_bytes())
+                return
         if self.path == "/api/health":
             self.send_bytes(200, "application/json", b'{"ok":true,"version":5}')
             return
         if self.path == '/repair_outfit_ui.js':
             self.send_bytes(200, 'text/javascript; charset=utf-8', (ROOT / 'repair_outfit_ui.js').read_bytes())
+            return
+        if self.path == '/repair_outfit_editor.js':
+            self.send_bytes(200, 'text/javascript; charset=utf-8', (ROOT / 'repair_outfit_editor.js').read_bytes())
+            return
+        if self.path == '/repair_outfit_ui.css':
+            self.send_bytes(200, 'text/css; charset=utf-8', (ROOT / 'repair_outfit_ui.css').read_bytes())
             return
         if self.path == '/assets/default-base.png' and DEFAULT_BASE_PATH.is_file():
             self.send_bytes(200, 'image/png', DEFAULT_BASE_PATH.read_bytes())
