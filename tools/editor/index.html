@@ -23,6 +23,7 @@
         <span>⚡</span> Xử lý sprite
       </button>
       <button id="download" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tải PNG kết quả</button>
+      <button id="downloadBase" class="as-button" disabled>Tải lớp Base</button>
       <button id="downloadOutfit" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tải riêng Outfit</button>
       <button id="split" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tách sprite</button>
       <button id="downloadHeadwear" class="px-3 py-1.5 border border-as-border rounded hover:bg-as-subpanel text-slate-200 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Tải tóc/mũ</button>
@@ -140,10 +141,11 @@
           <div class="grid grid-cols-2 gap-2">
             <label class="flex flex-col text-as-muted text-[10px]">Giới hạn màu
               <select id="colors" class="as-select mt-0.5">
+                <option value="-1" selected>Tự chọn màu</option>
                 <option value="0">Giữ gốc</option>
                 <option value="16">16 màu</option>
                 <option value="24">24 màu</option>
-                <option value="32" selected>32 màu</option>
+                <option value="32">32 màu</option>
                 <option value="64">64 màu</option>
                 <option value="128">128 màu</option>
               </select>
@@ -152,6 +154,13 @@
               <input id="threshold" type="number" min="1" max="255" value="36" class="as-input mt-0.5 text-center">
             </label>
           </div>
+          <label class="flex flex-col text-as-muted text-[10px]">Logo Gemini ở góc ảnh
+            <select id="logoCleanup" class="as-select mt-0.5" aria-describedby="logoCleanupHint">
+              <option value="auto" selected>Tự nhận diện & khôi phục màu</option>
+              <option value="off">Giữ nguyên</option>
+            </select>
+          </label>
+          <p id="logoCleanupHint" class="text-as-muted text-[10px]">Chỉ sửa khi nhận diện chắc chắn. Giữ ảnh nguồn và đường viền trang phục.</p>
         </div>
 
         <div class="border border-as-border bg-[#151719] rounded p-2 flex flex-col gap-2 shrink-0 text-[11px]">

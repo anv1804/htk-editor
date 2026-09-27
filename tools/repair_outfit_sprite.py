@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from gemini_logo import restore_corner_logo
 
 
 def load_rgba(path):
@@ -588,18 +589,41 @@ def headwear_mask(base, outfit, threshold=36, cleanup=3):
     if seeds.any():
         zone = (xx >= left-width//2) & (xx <= right+width//2)
         zone &= yy <= bottom+round(width*.65)
-        upper = yy <= top+max(3, round((bottom-top)*.48))
+        front_bottom = top+max(3, round((bottom-top)*.48))
+        # Use the source forehead opening to end a band, rather than cutting
+        # every hairstyle at 48% of the bald base's head height.
+        face_samples = skin & head & ~warm & (light > 150)
+        face_groups = [p for p in components(face_samples) if len(p) >= 8]
+        front_by_column = np.full(fg.shape[1],front_bottom)
+        if face_groups:
+            # Eyes/shadows can split one face into several bright clusters.
+            # The largest cluster may be the lower cheek; using it alone
+            # extends the "band" down through the forehead and eyes.
+            face_points = np.concatenate(face_groups)
+            face_top = int(face_points[:,0].min())
+            front_bottom = max(front_bottom,min(face_top-1,bottom-2))
+            front_by_column[:] = front_bottom
+            for cx in np.unique(face_points[:,1]):
+                first = int(face_points[face_points[:,1] == cx,0].min())
+                front_by_column[cx] = max(front_bottom,min(first-1,bottom-2))
+        upper = yy <= front_by_column[None,:]
         sides = (xx <= left+2) | (xx >= right-2)
-        allowed = fg & (~skin | warm | (yy < top)) & zone & (upper | sides)
+        allowed = fg & (upper | ~skin | warm | (yy < top)) & zone & (upper | sides)
         # Crown colors allow long hair to continue below the face, but not into
         # differently colored shoulder fabric merely touching the hair.
         palette = np.unique(rgb[seeds], axis=0)
         distance = np.full(fg.shape, 255., dtype=np.float32)
         nearest = nearest_colors(rgb[fg], palette)
         distance[fg] = np.linalg.norm(rgb[fg].astype(float)-palette[nearest], axis=1)
-        allowed &= upper | ((distance < 40) & (light < 125))
-        exposed_limb = skin_mask(b, foreground_mask(b, threshold)) & ~dilate(head, 1)
-        allowed &= ~(dilate(exposed_limb, 1) & ~upper)
+        continuation = (distance < 32) & (light < 125)
+        # Long hair can cover bare base arms and extend inward below the chin.
+        # Base anatomy is not evidence that the source pixel is exposed skin.
+        lower_hair = continuation & (yy > bottom) & zone & fg & ~skin
+        allowed = (allowed & (upper | continuation)) | lower_hair
+        _,palms = base_landmarks(b,foreground_mask(b,threshold))
+        # Cuff outlines share dark hair colors. Stop at the distal hand, not
+        # at the whole bare arm underneath a genuine long tress.
+        allowed &= ~(dilate(palms,1) & ~upper)
         result = seeds.copy()
         for _ in range(fg.shape[0]+fg.shape[1]):
             grown = result | (dilate(result, 1) & allowed)
@@ -626,13 +650,205 @@ def headwear_mask(base, outfit, threshold=36, cleanup=3):
             band = fg & side & (yy >= band_top) & (yy <= band_bottom)
             cool = (rgb[:,:,2].astype(int) > rgb[:,:,0].astype(int)+8) & (
                 rgb[:,:,2].astype(int) > rgb[:,:,1].astype(int)+2)
-            cool_seeds = band & cool & (light > 45)
+            cool_seeds = band & cool & (light > 45) & (yy <= top+(bottom-top)*.6)
             skull_neighborhood = dilate(head, 2)
             for group in components(band):
                 region = group_mask(fg.shape, group)
                 if np.count_nonzero(region & cool_seeds) >= 2 and np.any(region & skull_neighborhood):
                     result |= region
-    return fill_holes(result) & fg
+    # Keep the attached one-pixel underside of a band in the accessory layer.
+    # Leaving these dark junctions unlabelled exported floating brow fragments
+    # as clothing. Require support on several sides, not a global dilation.
+    support = sum(shift(result,dy,dx).astype(np.uint8)
+                  for dy in (-1,0,1) for dx in (-1,0,1) if dy or dx)
+    result |= fg & head & ~skin & (light < 115) & (support >= 3) & (yy < bottom-2)
+    # A closed crown/temple outline can surround the entire face. Filling
+    # that hole labels skin and eyes as hair, and subsequently recolors them.
+    # Only close small supported dark gaps; never flood the face opening.
+    holes = fill_holes(result) & fg & ~result
+    result |= holes & ~skin & (light < 125) & (support >= 3)
+    return result & fg
+
+
+def body_ribbon_mask(rgb, fg, head):
+    """Keep a body-connected blue ribbon, including its rim, out of hair.
+
+    Connectivity is measured in source material before palette fitting.
+    A detached head tie or a blue crown has no body anchor and stays a head
+    accessory. Rim ownership is bounded to one pixel, with warm hair acting
+    as a competing material rather than treating every dark pixel as hair.
+    """
+    hy = np.nonzero(head)[0]
+    result = np.zeros_like(fg)
+    if not len(hy):
+        return result
+    yy = np.indices(fg.shape)[0]
+    r,g,b = rgb.astype(np.int16).transpose(2,0,1)
+    blue = fg & (b > r+10) & (g > r+4) & (b >= g-18)
+    for points in components(blue):
+        region = group_mask(fg.shape,points)
+        if np.any(region & (yy > hy.max()+2)) and np.count_nonzero(region & (yy < hy.min()-1)) < 4:
+            result |= region
+    # Brown hair may touch the ribbon on one side. A neutral/cool rim can
+    # follow the blue core; a warm strand never follows that expansion.
+    rim = fg & (b >= r-6) & (b >= g-18) & (luminance(rgb) < 150)
+    return result | (dilate(result,1) & rim)
+
+
+def refine_sheet_headwear(base, outfit, *, rows, cols, threshold, cleanup, overrides=None):
+    """Learn source hair material across frames, then grow bounded strands.
+
+    Only initial crown evidence and explicit user labels train the palette.
+    Predicted pixels never train the next round: a bad guess cannot amplify
+    itself. Each round adds source-supported pixels, stopping at convergence.
+    """
+    cw,ch = base.width//cols,base.height//rows
+    result = np.zeros((base.height,base.width),bool)
+    tiles, votes, samples = [], {}, {}
+    spatial_votes=np.zeros((64,64),np.uint16)
+    manual_positive, manual_negative = [], []
+    for row in range(rows):
+        for col in range(cols):
+            x,y=col*cw,row*ch; box=(x,y,x+cw,y+ch)
+            b=np.asarray(base.crop(box).convert('RGBA'))
+            rgb,fg,_=clean_outfit(np.asarray(outfit.crop(box).convert('RGBA')),threshold,cleanup)
+            mask=headwear_mask(base.crop(box),outfit.crop(box),threshold,cleanup)
+            head,palms=base_landmarks(b,foreground_mask(b,threshold))
+            labels=np.asarray(overrides.crop(box).convert('RGBA')) if overrides is not None else np.zeros_like(b)
+            marked=labels[:,:,3]>=128
+            positive=marked & (labels[:,:,0]>200) & (labels[:,:,1]>100) & (labels[:,:,2]<100)
+            mask=(mask & ~marked) | positive
+            r,g,blue=rgb.astype(np.int16).transpose(2,0,1)
+            light=luminance(rgb)
+            hy,hx=np.nonzero(head)
+            if len(hy):
+                yy=np.indices(fg.shape)[0]
+                ribbon = body_ribbon_mask(rgb,fg,head)
+                mask &= ~(ribbon & ~positive)
+            else:
+                ribbon = np.zeros_like(fg)
+            brown=(r>=g+5)&(g>=blue-12)&(r>=blue+5)&(light>35)&(light<150)
+            neutral=(abs(r-g)<=6)&(abs(g-blue)<=6)&(light>10)&(light<130)
+            crown_core=np.zeros_like(fg)
+            if len(hy):
+                crown_core=mask & fg & ~boundary(fg) & (yy<hy.min()+max(3,(hy.max()-hy.min())*.3)) & (light>18) & (light<150)
+            neutral_hair=crown_core.sum()>=5 and np.count_nonzero(crown_core & neutral)>=crown_core.sum()*.55
+            evidence=mask & fg & (brown | (neutral if neutral_hair else False))
+            hy,hx=np.nonzero(head)
+            if len(hy):
+                ey,ex=np.nonzero(evidence)
+                width=int(hx.max()-hx.min()+1);center=(hx.min()+hx.max())/2
+                sy=np.rint((ey-hy.min())/width*16+8).astype(int)
+                sx=np.rint((ex-center)/width*16+32).astype(int)
+                valid=(sy>=0)&(sy<64)&(sx>=0)&(sx<64)
+                spatial=np.zeros((64,64),bool);spatial[sy[valid],sx[valid]]=True
+                spatial_votes+=dilate(spatial,2).astype(np.uint16)
+            bins=rgb[evidence]//12
+            for key in set(map(tuple,bins)):
+                selected=rgb[evidence][np.all(bins==key,axis=1)]
+                votes[key]=votes.get(key,0)+1
+                samples.setdefault(key,[]).append(selected)
+            near_head=dilate(head,4)
+            manual_positive.extend(rgb[positive & fg & near_head].tolist())
+            manual_negative.extend(rgb[marked & ~positive & fg & near_head].tolist())
+            tiles.append((x,y,b,rgb,fg,head,palms,mask,marked,positive,neutral_hair,ribbon))
+    palette=[]
+    for key,count in votes.items():
+        values=np.concatenate(samples[key])
+        if count>=min(2,rows*cols) and len(values)>=3:
+            palette.append(np.median(values,axis=0))
+    palette.extend(manual_positive)
+    palette=np.unique(np.asarray(palette,dtype=np.uint8).reshape(-1,3),axis=0)
+    negative=np.unique(np.asarray(manual_negative,dtype=np.uint8).reshape(-1,3),axis=0)
+    rounds=[]; recovered=0; unresolved=0; occluded=0; review=[]
+    for x,y,b,rgb,fg,head,palms,mask,marked,positive,neutral_hair,ribbon in tiles:
+        yy,xx=np.indices(fg.shape); hy,hx=np.nonzero(head)
+        initial=mask.copy()
+        additions=[]
+        if len(hy) and len(palette) and mask.any():
+            top,bottom,left,right=int(hy.min()),int(hy.max()),int(hx.min()),int(hx.max())
+            width=right-left+1; center=(left+right)/2
+            values=rgb[fg].astype(np.float32)
+            distance=np.full(fg.shape,255.,np.float32)
+            distance[fg]=np.linalg.norm(values-palette[nearest_colors(values,palette)],axis=1)
+            light=luminance(rgb)
+            r,g,blue=rgb.astype(np.int16).transpose(2,0,1)
+            neutral=(abs(r-g)<=6)&(abs(g-blue)<=6)
+            hair_chroma=((r>=g+5)&(g>=blue-12)&(r>=blue+5)) | (neutral if neutral_hair else False)
+            allowed=fg & (distance<24) & (light<150) & ~marked & hair_chroma & ~ribbon
+            allowed &= (xx>=left-width//2)&(xx<=right+width//2)&(yy<=bottom+width)
+            # A strand may hang over a temple, but may not flood the central
+            # eyes/mouth or the hands just because their outlines are dark.
+            allowed &= (yy<top+(bottom-top)*.62)|(abs(xx-center)>=width*.18)
+            # Below the cheek, jaw strokes and collar ink can share hair
+            # colors. They are never strand-growth seeds inside the face.
+            allowed &= (yy<bottom-3)|~dilate(head,1)
+            allowed &= ~source_palm_apertures(rgb,fg,b,foreground_mask(b,threshold))
+            if len(negative):
+                nd=np.full(fg.shape,255.,np.float32)
+                nd[fg]=np.linalg.norm(values-negative[nearest_colors(values,negative)],axis=1)
+                allowed &= distance+8<nd
+            # Source skin highlights/shadows provide a competing class.
+            skin=skin_mask(np.dstack((rgb,fg.astype(np.uint8)*255)),fg)
+            skin_palette=np.unique(rgb[skin & head & (light>150)],axis=0)
+            if len(skin_palette):
+                sd=np.full(fg.shape,255.,np.float32)
+                sd[fg]=np.linalg.norm(values-skin_palette[nearest_colors(values,skin_palette)],axis=1)
+                allowed &= distance+14<sd
+            # A scarf can occlude a long tress and disconnect it from the
+            # crown. Recover a substantial brown source patch on the rear
+            # side, never a thin seam or an arbitrary dark torso fragment.
+            eyes=(luminance(b[:,:,:3])<80)&head&~boundary(head)
+            eye_x=np.nonzero(eyes)[1]
+            facing=(float(eye_x.mean())-center) if len(eye_x) else 0
+            rear=xx<center-width*.12 if facing>width*.12 else (
+                xx>center+width*.12 if facing < -width*.12 else abs(xx-center)>width*.35)
+            dark_neutral=neutral & (light>12) & neutral_hair
+            tress=allowed & rear & (yy>top+(bottom-top)*.45) & ((light>35)|dark_neutral) & (distance<18)
+            sy=np.clip(np.rint((yy-top)/width*16+8).astype(int),0,63)
+            sx=np.clip(np.rint((xx-center)/width*16+32).astype(int),0,63)
+            prior=spatial_votes[sy,sx]>=min(2,rows*cols)
+            tress_regions=np.zeros_like(mask)
+            for points in components(tress):
+                if len(points)<5 or np.ptp(points[:,0])<2 or np.ptp(points[:,1])<1:
+                    continue
+                region=group_mask(fg.shape,points)
+                # A small brown hand/belt patch far below the head is not a
+                # hidden tress just because another pose has hair nearby.
+                if points[:,0].min() > bottom+width*.5 and not np.any(region & dilate(initial,2)):
+                    continue
+                if np.median(light[region])<35:
+                    solid=region & shift(region,0,1) & shift(region,1,0) & shift(region,1,1)
+                    if np.count_nonzero(solid)<2:
+                        continue
+                if np.any(region & dilate(initial,4)) or np.count_nonzero(region & prior)>=max(3,len(points)*.4):
+                    occluded+=int((region & ~mask).sum())
+                    mask |= region
+                    tress_regions |= region
+            # Lower growth belongs to a confirmed substantial tress. Do not
+            # follow an arbitrarily long chain of cuff/belt outline pixels.
+            allowed &= (yy<bottom-2)|dilate(tress_regions,1)
+            for _ in range(16):
+                added=allowed & ~mask & dilate(mask,1)
+                count=int(added.sum()); additions.append(count)
+                if not count:
+                    break
+                mask |= added
+            support=sum(shift(mask,dy,dx).astype(np.uint8)
+                        for dy in (-1,0,1) for dx in (-1,0,1) if dy or dx)
+            mask |= fg & ~marked & ~ribbon & rear & ~dilate(head,1) & dilate(tress_regions,1) & (light<45) & (support>=3)
+            unresolved += int((allowed & ~mask).sum())
+            if np.count_nonzero(allowed & ~mask & dilate(mask,3))>=2:
+                review.append((y//ch)*cols+x//cw+1)
+        recovered += int((mask & ~initial).sum())
+        rounds.append(additions)
+        result[y:y+ch,x:x+cw]=mask
+    history=[sum(v[i] if i<len(v) else 0 for v in rounds) for i in range(max(map(len,rounds),default=0))]
+    return result,dict(iterations=len(history),maxIterations=16,addedPerIteration=history,reviewFrames=review,
+        recoveredHairPixels=recovered,occludedHairPixels=occluded,unresolvedCandidates=unresolved,
+        paletteSamples=len(palette),confirmedSamples=len(manual_positive)+len(manual_negative),
+        converged=not history or history[-1]==0,
+        training='source-crowns-and-explicit-corrections; predictions-not-retrained')
 
 
 def outfit_skin_openings(rgb, fg, base, base_fg, protected):
@@ -653,11 +869,22 @@ def outfit_skin_openings(rgb, fg, base, base_fg, protected):
     colors = rgb[candidates].astype(np.float32)
     nearest = nearest_colors(colors, palette)
     matched[candidates] = np.linalg.norm(colors-palette[nearest],axis=1) < 38
-    result = np.zeros_like(fg)
-    for points in components(matched):
-        region = group_mask(fg.shape, points)
+    # Leather gloves/boots share the face's brown shadow palette. Require
+    # diffuse flesh evidence in the BODY before following its darker shades;
+    # a face seed must not travel through a brown collar into a whole outfit.
+    light = luminance(rgb)
+    diffuse_floor = float(np.percentile(light[samples],40))-50
+    body = ~head
+    seeds = matched & body & (light >= diffuse_floor)
+    result = matched & head
+    body_result = np.zeros_like(fg)
+    for points in components(seeds):
+        region = group_mask(fg.shape,points)
         if len(points) >= 2 and np.any(region & dilate(skin_mask(base,base_fg),3)):
-            result |= region
+            body_result |= region
+    for _ in range(3):
+        body_result |= matched & body & dilate(body_result,1)
+    result |= body_result
     # Follow warm shadow pixels only one step from confirmed flesh. Never
     # flood a brown belt or widen the cut through a colored cuff.
     r,g,b = rgb.astype(np.int32).transpose(2,0,1)
@@ -746,6 +973,71 @@ def source_material_evidence(rgb, fg, head, cloth):
     return result & fg & flesh
 
 
+def source_neckline_material(rgb, fg, head):
+    """Keep lapels and their seams beside an actual source neck opening.
+
+    Gold/ivory piping can be as bright as skin. Compare its chroma with the
+    source cheek, then require a continuing strip down into the garment. The
+    base's bare chest is deliberately not used as evidence for an opening.
+    """
+    result = np.zeros_like(fg)
+    hy, hx = np.nonzero(head)
+    if not len(hy):
+        return result
+    yy, xx = np.indices(fg.shape)
+    width = int(np.ptp(hx))+1
+    bottom, center = int(hy.max()), (hx.min()+hx.max())/2
+    r,g,b = rgb.astype(np.float32).transpose(2,0,1)
+    light = luminance(rgb)
+    flesh = fg & (r > g+16) & (g > b+7)
+    cheek = flesh & head & (yy < bottom-3) & (light > 150)
+    if cheek.sum() < 4:
+        return result
+    redness = (r-g)/np.maximum(g-b,1)
+    face_redness = float(np.median(redness[cheek]))
+    band = fg & (yy >= bottom-1) & (yy <= bottom+max(4,round(width*.45)))
+    band &= abs(xx-center) <= width*.6
+    # A lapel is an elongated material region, not an isolated skin-colored
+    # highlight. This also handles warm white collars in side-facing poses.
+    trim = band & (light > 85) & (g > b+6) & (r-g < 48)
+    trim &= redness < min(1.5,face_redness*.9)
+    for points in components(trim):
+        if len(points) >= 3 and np.ptp(points[:,0]) >= 2 and points[:,0].max() >= bottom+3:
+            result |= group_mask(fg.shape,points)
+    # Red/purple cloth shadows have blue in them; flesh shades remain on the
+    # warm side of green. Keep these panels even where they border the neck.
+    colored = band & (yy > bottom) & (b >= g-4) & (r > g+8) & (light > 35)
+    for points in components(colored):
+        if len(points) >= 3:
+            result |= group_mask(fg.shape,points)
+    # Anti-aliasing can tint one pixel of an otherwise continuous trim pink.
+    # Bridge a gap or continue a straight/stepped stroke by just one pixel;
+    # never flood by color similarity into the chest.
+    continuation = np.zeros_like(fg)
+    values = rgb.astype(np.float32)
+    for dx in (-1,0,1):
+        for dy in (-1,1):
+            adjacent = shift(result,dy,dx)
+            next_row = np.logical_or.reduce([shift(result,2*dy,2*dx+turn)
+                                              for turn in (-1,0,1)])
+            straight = adjacent & next_row
+            bridge = adjacent & shift(result,-dy,-dx)
+            donor = shift(values,dy,dx)
+            close = np.linalg.norm(values-donor,axis=2) < 48
+            continuation |= (straight | bridge) & close
+    result |= continuation & band & (yy >= bottom+3) & (light > 115)
+    # Preserve a shared collar seam. Do not expand across bright neck skin,
+    # and require material on more than one side of an ambiguous dark pixel.
+    support = sum(shift(result,dy,dx).astype(np.uint8)
+                  for dy,dx in ((0,1),(0,-1),(1,0),(-1,0)))
+    diagonal_support = sum(shift(result,dy,dx).astype(np.uint8)
+                           for dy,dx in ((1,1),(1,-1),(-1,1),(-1,-1)))
+    seam = band & (yy > bottom) & (light < 115)
+    seam &= (support >= 2) | ((support >= 1) & (support+diagonal_support >= 3))
+    result |= seam
+    return result
+
+
 def source_palm_apertures(rgb, fg, base, base_fg):
     """Recover flesh and red/brown hand rims without exposing the forearm."""
     head, palms = base_landmarks(base, base_fg)
@@ -760,6 +1052,7 @@ def source_palm_apertures(rgb, fg, base, base_fg):
     # handles skin outside base; this recovery step is restricted to the palm.
     zone = palms & ~head
     seeds = flesh & zone & (ratio >= cutoff)
+    seeds &= luminance(rgb) >= float(np.percentile(luminance(rgb)[face],40))-50
     palette = np.unique(rgb[face],axis=0)
     values = rgb[seeds].astype(np.float32)
     if len(values):
@@ -770,6 +1063,16 @@ def source_palm_apertures(rgb, fg, base, base_fg):
         area = group_mask(fg.shape,points)
         if len(points) >= 2 and np.any(area & palms):
             result |= area
+    # Downsampled palms contain pink-grey highlights and shadows which fail
+    # the coarse g>b+7 skin test. Recover them only beside a proven aperture,
+    # inside the base palm, with red (not yellow/olive) chroma.
+    faded = fg & zone & (r > g+6) & (g >= b) & (ratio >= max(1.25,cutoff*.8))
+    values = rgb[faded].astype(np.float32)
+    if len(values):
+        distance = np.linalg.norm(values-palette[nearest_colors(values,palette)],axis=1)
+        faded[faded] = distance <= 58
+    for _ in range(3):
+        result |= faded & dilate(result,1)
     red_rim = fg & zone & (luminance(rgb) < 115) & (r > g+5)
     red_rim &= ratio >= cutoff
     return result | (dilate(result,1) & red_rim)
@@ -907,7 +1210,18 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     protected_material = (warm_material_mask(b, base_fg, rgb, fg)
                           if headwear is not None else np.zeros_like(fg))
     collar = collar_material_mask(rgb,fg,regions['head'],regions['cloth'])
-    tan_material = bool(protected_material.sum() >= max(24, int(fg.sum()*.2)))
+    neckline = (source_neckline_material(rgb,fg,base_head_mask(b,base_fg))
+                if conservative else np.zeros_like(fg))
+    collar |= neckline
+    # Brown hair must not turn a blue/cream outfit into a "tan suit". That
+    # classifier protects the body core and previously also protected palms.
+    body_material = fg & ~dilate(base_head_mask(b,base_fg),1)
+    if headwear is not None:
+        body_material &= ~headwear
+    tr,tg,tb = rgb.astype(np.int16).transpose(2,0,1)
+    cool_body = body_material & ((tg > tr+8) | (tb > tr+8))
+    tan_material = bool(protected_material.sum() >= max(24, int(fg.sum()*.2))
+                        and cool_body.sum() < max(1,body_material.sum()*.12))
     if tan_material:
         # On warm/tan outfits the torso and trouser panels can match the base
         # skin palette. Preserve source pixels over the central body panel;
@@ -926,6 +1240,12 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     structural_protection = protected_material.copy()
     candidate &= ~protected_material
     protected_material |= collar
+    # Purple/red fabric near a neck opening must not be expanded into as a
+    # brown skin rim. Its blue-over-green chroma is absent from flesh seeds.
+    protected_material |= fg & ~regions['head'] & (tb > tg+8) & (tr > tg+10)
+    ribbon = (body_ribbon_mask(rgb,fg,regions['head'])
+              if conservative and headwear is not None and headwear.any() else np.zeros_like(fg))
+    protected_material |= ribbon
     cuff_material = np.zeros_like(fg)
     if conservative:
         # A cuff's shaded green/blue material can be almost black. The later
@@ -1098,6 +1418,17 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
         removed = aperture_removed
     protected=protected_material | (headwear if headwear is not None else False)
     removed &= ~protected
+    if headwear is not None and np.any(base_head):
+        # Old eyes/brows can be labelled warm material simply because a brown
+        # headband is adjacent. Surrounded details in the face opening belong
+        # to the base; the independently classified accessory remains on top.
+        face_seed = candidate & base_head & ~headwear
+        face_neighbors = sum(shift(face_seed,dy,dx).astype(np.uint8)
+                             for dy,dx in offsets)
+        face_detail = fg & base_head & ~headwear & ~collar & (face_neighbors >= 3)
+        face_detail &= np.indices(fg.shape)[0] < np.nonzero(base_head)[0].max()-1
+        face_detail &= (luminance(rgb) < 115) | (np.ptp(rgb.astype(np.int16),axis=2) < 35)
+        removed |= face_detail
     if conservative:
         palm_aperture = source_palm_apertures(rgb,fg,b,base_fg)
         palm_aperture &= ~structural_protection
@@ -1111,7 +1442,30 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
                 (headwear if headwear is not None else False),
                 sheet_skin_palette, sheet_cloth_palette)
             removed |= skin_residue
+        # The base describes anatomy under the clothes. Without a confirmed
+        # source opening, a glove, boot or warm armor panel must remain.
+        body_openings = (source_skin | palm_aperture) & ~base_head
+        removed &= base_head | dilate(body_openings,2)
     removed=refine_bare_foot_edges(rgb,fg,base_fg,base_skin,removed,material,protected,base_head)
+    if conservative and len(hy):
+        # A shaded ear may still touch the collar and thus is not a detached
+        # component. Follow confirmed bright face skin by only two pixels,
+        # well above the chin. Hair/headwear and cool ribbons remain owners.
+        face_core=candidate & base_head & (luminance(rgb)>150)
+        if headwear is not None:
+            face_core &= ~headwear
+        yy=np.indices(fg.shape)[0]
+        face_rim=fg & dilate(base_head,1) & dilate(face_core,2)
+        face_rim &= (r>g+12)&(g>=blue+3)&(yy<hy.max()-2)
+        if headwear is not None:
+            face_rim &= ~headwear
+        face_ink=fg & dilate(base_head,1) & dilate(face_rim,1)
+        neutral_matte=(np.ptp(rgb.astype(np.int16),axis=2)<14)&(luminance(rgb)<150)
+        face_ink &= ((luminance(rgb)<70)|neutral_matte)&(yy<hy.max()-2)
+        if headwear is not None:
+            face_ink &= ~headwear
+        removed |= face_rim | face_ink
+    removed &= ~(ribbon | neckline)
     garment = fg & ~removed
     erase = np.zeros(fg.shape,bool)
     force_outfit = np.zeros(fg.shape,bool)
@@ -1385,6 +1739,7 @@ def consolidate_palette_islands(rgb, fill, cell_size):
             # majority. Thin highlights, stitches and line endpoints survive.
             take = v & (own <= 1) & (votes >= 6) & (votes > best) & (distance < 32)
             take &= (luminance(source) > 100) & (luminance(n) > 100)
+            take &= source_color_families(source) == source_color_families(n)
             result[take] = n[take]
             best[take] = votes[take]
     return result
@@ -1425,6 +1780,40 @@ def clarify_fabric_tones(rgb, fill, cell_size, strength=.16, saturation=.04):
     return result
 
 
+def source_color_families(rgb):
+    """Broad source hue families; luminance is free to vary within each ramp."""
+    r,g,b = (rgb[...,i].astype(np.int16) for i in range(3))
+    family = np.zeros(rgb.shape[:-1],np.uint8)
+    chromatic = np.ptp(rgb.astype(np.int16),axis=-1) >= 12
+    family[chromatic] = 1  # warm / gold / brown
+    family[chromatic & (g > r+4) & (g > b+10)] = 2  # green
+    family[chromatic & (b > r+4) & (g >= r) & (b >= g-10)] = 3  # blue / cyan
+    family[chromatic & (b > g+8) & (r > g+4)] = 4  # purple / magenta
+    return family
+
+
+def fit_palette_medoids(pixels, targets, budget):
+    """Quantize one material family to actual source shades, without dithering."""
+    source_palette = np.unique(pixels,axis=0)
+    if len(source_palette) <= budget:
+        return source_palette[nearest_colors(targets,source_palette)]
+    sample = Image.fromarray(pixels.reshape(1,-1,3))
+    quantized = sample.quantize(colors=budget,method=Image.Quantize.MEDIANCUT,dither=Image.Dither.NONE)
+    raw = np.asarray(quantized.getpalette(),np.uint8).reshape(-1,3)
+    palette = raw[np.unique(np.asarray(quantized))].astype(np.float32)
+    weights = np.array([.299,.587,.114],np.float32)
+    for _ in range(6):
+        labels = nearest_colors(pixels,palette)
+        for i in range(len(palette)):
+            selected = pixels[labels == i]
+            if len(selected):
+                center = selected.mean(axis=0)
+                distance = ((selected.astype(np.float32)-center)**2*weights).sum(axis=1)
+                palette[i] = selected[np.argmin(distance)]
+    palette = np.rint(palette).astype(np.uint8)
+    return palette[nearest_colors(targets,palette)]
+
+
 def fit_source_palette(rgb, fill, budget, cell_size, *, redraw=False):
     """Fit a crisp, source-only palette without smoothing pixel structure.
 
@@ -1439,30 +1828,81 @@ def fit_source_palette(rgb, fill, budget, cell_size, *, redraw=False):
     targets = working[fill]
     if not len(pixels):
         return source
-    source_palette = np.unique(pixels,axis=0)
-    if len(source_palette) <= budget:
-        result = source.copy()
-        result[fill] = source_palette[nearest_colors(targets,source_palette)]
-        return consolidate_palette_islands(result,fill,cell_size)
-    sample = Image.fromarray(pixels.reshape(1,-1,3))
-    quantized = sample.quantize(colors=budget,method=Image.Quantize.MEDIANCUT,dither=Image.Dither.NONE)
-    raw = np.asarray(quantized.getpalette(),np.uint8).reshape(-1,3)
-    palette = raw[np.unique(np.asarray(quantized))].astype(np.float32)
-    weights = np.array([.299,.587,.114],np.float32)
-    # Refine with all source pixels, then snap each center to its nearest real
-    # source color. This prevents muddy averaged shades and invented pixels.
-    for _ in range(6):
-        labels = nearest_colors(pixels,palette)
-        for i in range(len(palette)):
-            selected = pixels[labels == i]
-            if len(selected):
-                center = selected.mean(axis=0)
-                distance = ((selected.astype(np.float32)-center)**2*weights).sum(axis=1)
-                palette[i] = selected[np.argmin(distance)]
-    palette = np.rint(palette).astype(np.uint8)
     result = source.copy()
-    result[fill] = palette[nearest_colors(targets,palette)]
+    families = source_color_families(pixels)
+    ids,counts = np.unique(families,return_counts=True)
+    if budget >= len(ids):
+        # Reserve a ramp for every source hue before distributing spare
+        # shades. A narrow blue ribbon cannot be voted out by a large green
+        # band/brown hairstyle, even in a small shared palette.
+        allocation = np.ones(len(ids),int)
+        capacity = np.array([len(np.unique(pixels[families == k],axis=0)) for k in ids])
+        weights = np.sqrt(counts)
+        for _ in range(min(budget,int(capacity.sum()))-len(ids)):
+            priority = np.where(allocation < capacity,weights/(allocation+1),-1)
+            allocation[int(priority.argmax())] += 1
+        fitted = pixels.copy()
+        for k,n in zip(ids,allocation):
+            selected = families == k
+            fitted[selected] = fit_palette_medoids(pixels[selected],targets[selected],int(n))
+        result[fill] = fitted
+    else:
+        result[fill] = fit_palette_medoids(pixels,targets,budget)
     return consolidate_palette_islands(result,fill,cell_size)
+
+
+def deepen_hair_tones(rgb, hair):
+    """Gently deepen brown hair shades without changing headband accents.
+
+    Map each shade consistently across the sheet. Shared colors remain locked
+    so base pixels, garment colors and the total palette budget stay intact.
+    """
+    result = rgb.copy()
+    if not hair.any():
+        return result
+    palette = np.unique(rgb[hair],axis=0)
+    shared = {tuple(color) for color in np.unique(rgb[~hair],axis=0)}
+    for color in palette:
+        r,g,b = (int(v) for v in color)
+        light = .299*r + .587*g + .114*b
+        # Green/olive bands, bright ornaments and near-black ink are not hair
+        # midtones. Keep them unchanged, including the source highlight hue.
+        if tuple(color) in shared or not (r >= g+7 and g >= b-3 and r >= b+8 and 32 < light < 175):
+            continue
+        selected = hair & np.all(rgb == color,axis=2)
+        result[selected] = np.rint(color.astype(np.float32)*.90).astype(np.uint8)
+    return result
+
+
+def material_outline_color(rgba, material, fallback):
+    """Choose recurring dark source ink instead of borrowing the skin outline."""
+    values=rgba[:,:,:3][material]
+    if not len(values):
+        return fallback
+    light=luminance(values)
+    dark=values[(light>8)&(light<80)]
+    if len(dark)<8:
+        return fallback
+    cutoff=min(50,float(np.percentile(luminance(dark),25)))
+    dark=dark[luminance(dark)<=cutoff]
+    bins,counts=np.unique(dark//12,axis=0,return_counts=True)
+    selected=dark[np.all(dark//12==bins[np.argmax(counts)],axis=1)]
+    center=np.median(selected,axis=0)
+    return selected[np.argmin(np.linalg.norm(selected.astype(float)-center,axis=1))]
+
+
+def automatic_palette_budget(rgba, anatomy, garment, headwear):
+    locked=len(np.unique(rgba[:,:,:3][anatomy],axis=0))
+    pixels=rgba[:,:,:3][garment]
+    if not len(pixels):
+        return 0
+    _,counts=np.unique(pixels//32,axis=0,return_counts=True)
+    families=int((counts>=max(3,len(pixels)*.003)).sum())
+    material_budget=max(16,min(40,round(np.sqrt(families)*4)))
+    if headwear is not None and headwear.any():
+        material_budget+=8
+    needed=locked+material_budget+2
+    return next((n for n in (32,48,64,96,128,256) if n>=needed),0)
 
 
 def garment_edge_mask(rgb, foreground, fabric, anatomy):
@@ -1540,10 +1980,26 @@ def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size, headwe
                 else:
                     tile[:] = repaint_redundant_ink(tile,fabric,duplicate,contours[y:y+ch,x:x+cw])
                     tile[:] = clean_parallel_outline(tile,fabric,contours[y:y+ch,x:x+cw])
+                if headwear is not None:
+                    accessory=headwear[y:y+ch,x:x+cw] & fabric
+                    # A headband's lower edge is internal to the character,
+                    # so the outer silhouette pass alone misses it. Finish
+                    # that supported edge inward without enlarging the band.
+                    face=base_head_mask(out[y:y+ch,x:x+cw],skin)
+                    joins=accessory & dilate(face & skin,1)
+                    support4=sum(shift(accessory,dy,dx).astype(np.uint8)
+                                 for dy,dx in ((0,1),(0,-1),(1,0),(-1,0)))
+                    interior=accessory & ~boundary(accessory)
+                    contours[y:y+ch,x:x+cw] |= joins & (support4>=2) & dilate(interior,1)
                 light = luminance(tile)
                 # Internal folds keep their source tones. Turning local dark
                 # ridges into uniform ink produced false stitches and speckles.
         out[contours,:3] = ink
+        if paint == 4 and headwear is not None:
+            hair=garment & headwear
+            cloth=garment & ~headwear
+            out[contours & cloth,:3]=material_outline_color(rgba,cloth,ink)
+            out[contours & hair,:3]=material_outline_color(rgba,hair,ink)
     locked = np.unique(out[:,:,:3][anatomy | contours],axis=0)
     fill = garment & ~contours
     if colors and len(locked) > colors:
@@ -1553,7 +2009,20 @@ def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size, headwe
         if remaining < 1:
             raise ValueError(f'Palette needs at least {len(locked)+1} colors to preserve base anatomy; choose a larger limit')
         if paint in (3,4):
-            out[:,:,:3] = fit_source_palette(out[:,:,:3],fill,remaining,cell_size,redraw=paint == 4)
+            hair_fill = fill & headwear if headwear is not None else np.zeros_like(fill)
+            cloth_fill = fill & ~hair_fill
+            if remaining >= 8 and hair_fill.any() and cloth_fill.any():
+                # One shared cloth palette turned a green headband blue/grey.
+                # Allocate within the same total budget but learn each layer
+                # independently, preserving its materials and small accents.
+                share = np.sqrt(hair_fill.sum()) / (np.sqrt(hair_fill.sum())+np.sqrt(cloth_fill.sum()))
+                hair_count = max(4,min(remaining-4,round(remaining*share)))
+                out[:,:,:3] = fit_source_palette(out[:,:,:3],hair_fill,hair_count,cell_size,redraw=False)
+                out[:,:,:3] = fit_source_palette(out[:,:,:3],cloth_fill,remaining-hair_count,cell_size,redraw=paint == 4)
+            else:
+                out[:,:,:3] = fit_source_palette(out[:,:,:3],fill,remaining,cell_size,redraw=paint == 4)
+            if paint == 4:
+                out[:,:,:3] = deepen_hair_tones(out[:,:,:3],hair_fill)
             out[out[:,:,3] == 0] = 0
             return out, contours
         count = min(remaining, {0:256,1:12,2:6}[paint])
@@ -1602,7 +2071,8 @@ def repair_frame(base, outfit, *, background_threshold, skin_expand, outline=Tru
 
 def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin_expand,
                  outline=True, cleanup=3, paint=1, overrides=None, return_masks=False,
-                 base_profile=None, lock_base=False, retouch=None, composition='pinned', accessories=False):
+                 base_profile=None, lock_base=False, retouch=None, composition='pinned', accessories=False,
+                 logo_cleanup='auto', logo_report=None, learning_report=None):
     if composition not in ('layers','pinned','cutout'):
         raise ValueError('Unknown composition mode')
     if not isinstance(rows,int) or not isinstance(cols,int) or not 1 <= rows <= 64 or not 1 <= cols <= 64:
@@ -1611,7 +2081,7 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         raise ValueError(f'Base and outfit sizes differ: {base.size} vs {outfit.size}')
     if base.width % cols or base.height % rows:
         raise ValueError('Sheet size is not divisible by the requested grid')
-    if not 0 <= colors <= 256 or not np.isfinite(background_threshold) or not 0 <= background_threshold <= 255:
+    if not -1 <= colors <= 256 or not np.isfinite(background_threshold) or not 0 <= background_threshold <= 255:
         raise ValueError('Invalid palette limit or background threshold')
     if not 0 <= skin_expand <= 4 or not 0 <= cleanup <= 16 or paint not in (0,1,2,3,4):
         raise ValueError('Invalid cleanup, paint or skin expansion setting')
@@ -1621,6 +2091,12 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         raise ValueError('Base profile must match the sheet dimensions')
     if retouch is not None and retouch.size != base.size:
         raise ValueError('Retouch layer must match the sheet dimensions')
+    protected = None
+    if overrides is not None:
+        protected = np.asarray(overrides.convert('RGBA'))[:, :, 3] >= 128
+    outfit, logo_info = restore_corner_logo(outfit, mode=logo_cleanup, protected=protected)
+    if logo_report is not None:
+        logo_report.update(logo_info)
     if composition == 'pinned' and lock_base and base_profile is None:
         base_profile = build_base_profile(base,rows=rows,cols=cols,threshold=background_threshold)
     cw, ch = base.width//cols, base.height//rows
@@ -1633,6 +2109,11 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
     garment = np.zeros(output.shape[:2],bool)
     reconstructed = np.zeros(output.shape[:2],bool)
     headwear = np.zeros(output.shape[:2],bool)
+    if accessories and composition != 'pinned':
+        headwear,head_report=refine_sheet_headwear(base,outfit,rows=rows,cols=cols,
+            threshold=background_threshold,cleanup=cleanup,overrides=overrides)
+        if learning_report is not None:
+            learning_report.update(head_report)
     reports = []
     for row in range(rows):
         for col in range(cols):
@@ -1645,18 +2126,85 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
                 extra['sheet_skin_palette'] = sheet_skin_palette
                 extra['sheet_cloth_palette'] = sheet_cloth_palette
             if accessories and composition != 'pinned':
-                h = headwear_mask(base.crop(box), outfit.crop(box), background_threshold, cleanup)
-                if overrides is not None:
-                    labels = np.asarray(overrides.crop(box).convert('RGBA'))
-                    marked = labels[:,:,3] >= 128
-                    force_head = marked & (labels[:,:,0] > 200) & (labels[:,:,1] > 100) & (labels[:,:,2] < 100)
-                    h = (h & ~marked) | force_head
-                headwear[y:y+ch,x:x+cw] = h
+                h = headwear[y:y+ch,x:x+cw]
                 extra['headwear'] = h
             out,a,g,s,stats = compose(base.crop(box),outfit.crop(box),background_threshold=background_threshold,
                                          skin_expand=skin_expand,cleanup=cleanup,
                                          overrides=overrides.crop(box) if overrides is not None else None,
                                          profile=base_profile.crop(box) if base_profile is not None else None, **extra)
+            if accessories and composition == 'cutout':
+                h=headwear[y:y+ch,x:x+cw]
+                marked=np.asarray(overrides.crop(box))[:,:,3]>=128 if overrides is not None else np.zeros_like(g)
+                base_pixels=np.asarray(base.crop(box).convert('RGBA'))
+                base_fg=foreground_mask(base_pixels,background_threshold)
+                head=base_head_mask(base_pixels,base_fg)
+                # Cutting the face and separating rear hair can strand small
+                # fragments in Outfit. Assign dark hair rims to their owner;
+                # remove unanchored face residue, preserving explicit edits.
+                for points in components(g & ~h):
+                    fragment=group_mask(g.shape,points)
+                    if np.any(fragment & marked):
+                        continue
+                    hy,hx=np.nonzero(head)
+                    # A shifted source temple can leave a 5–12 pixel strip
+                    # after its face is cut. Size-only dust filtering misses
+                    # it. Require a detached fragment inside the head
+                    # neighborhood, above the chin, with warm face-rim ink.
+                    values=out[:,:,:3][fragment].astype(np.int16)
+                    warm_rim=(values[:,0]>values[:,1]+8)&(values[:,1]>=values[:,2]+3)
+                    face_strip=(len(hy)>0 and len(points)<=max(8,len(np.unique(hx)))
+                        and points[:,0].max()<=hy.max()
+                        and points[:,0].min()>=hy.min()+(hy.max()-hy.min())*.15
+                        and np.all(dilate(head,2)[fragment]) and np.any(warm_rim))
+                    if face_strip:
+                        g[fragment]=False
+                        a[fragment]=base_fg[fragment]
+                        out[fragment]=0
+                        out[fragment & base_fg]=base_pixels[fragment & base_fg]
+                        stats['removed_noise_pixels']+=len(points)
+                        continue
+                    if len(points)>3:
+                        continue
+                    if np.all(luminance(out[:,:,:3])[fragment]<70) and np.any(fragment & dilate(h,1)):
+                        h |= fragment
+                    elif not np.any(fragment & dilate(g & ~fragment,1)) or (
+                            np.all(dilate(head,1)[fragment]) and np.any(fragment & dilate(a & head,2))):
+                        g[fragment]=False
+                        a[fragment]=base_fg[fragment]
+                        out[fragment]=0
+                        out[fragment & base_fg]=base_pixels[fragment & base_fg]
+                        stats['removed_noise_pixels']+=len(points)
+                # Separating a robe scarf from the crown must not leave its
+                # one-pixel outline as floating dust in the hair export.
+                for points in components(h & g):
+                    if len(points)>3:
+                        continue
+                    fragment=group_mask(g.shape,points)
+                    if np.any(fragment & marked):
+                        continue
+                    h[fragment]=False
+                    if not np.any(fragment & dilate(g & ~fragment,1)):
+                        g[fragment]=False
+                        a[fragment]=base_fg[fragment]
+                        out[fragment]=0
+                        out[fragment & base_fg]=base_pixels[fragment & base_fg]
+                        stats['removed_noise_pixels']+=len(points)
+                # Reassignment can itself strand a garment dot. Audit the
+                # final owners, not just the intermediate composite mask.
+                for owner in (g & ~h,g & h):
+                    for points in components(owner):
+                        if len(points)>3:
+                            continue
+                        fragment=group_mask(g.shape,points)
+                        if np.any(fragment & marked):
+                            continue
+                        g[fragment]=h[fragment]=False
+                        a[fragment]=base_fg[fragment]
+                        out[fragment]=0
+                        out[fragment & base_fg]=base_pixels[fragment & base_fg]
+                        stats['removed_noise_pixels']+=len(points)
+                stats['outfit_pixels']=int(g.sum())
+                stats['restored_anatomy_pixels']=int(a.sum())
             output[y:y+ch,x:x+cw], anatomy[y:y+ch,x:x+cw], garment[y:y+ch,x:x+cw] = out,a,g
             reconstructed[y:y+ch,x:x+cw] = s
             stats.update(row=row,col=col)
@@ -1668,6 +2216,10 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         output[painted] = manual[painted]
         output[painted,3] = 255
         anatomy[painted] = reconstructed[painted] = garment[painted] = False
+    if colors == -1:
+        colors=automatic_palette_budget(output,anatomy | reconstructed | painted,garment,headwear if accessories else None)
+        if learning_report is not None:
+            learning_report['automaticPaletteBudget']=colors
     output,contours = repaint(output,anatomy | reconstructed | painted,garment,colors=colors,paint=paint,outline=outline,cell_size=(cw,ch),headwear=headwear if accessories else None,conservative=composition == 'cutout')
     for stats in reports:
         x,y = stats['col']*cw,stats['row']*ch
@@ -1701,6 +2253,8 @@ def parse_args():
     parser.add_argument('--composition',choices=('cutout','layers','pinned'),default='cutout')
     parser.add_argument('--free-skin',action='store_true',help='Use legacy outfit-guided hand locations')
     parser.add_argument('--no-outline',action='store_true')
+    parser.add_argument('--logo-cleanup', choices=('auto', 'off'), default='auto',
+                        help='Restore a confidently detected visible Gemini corner logo before segmentation')
     parser.add_argument('--overrides',type=Path)
     parser.add_argument('--report',type=Path)
     return parser.parse_args()
@@ -1709,6 +2263,7 @@ def parse_args():
 def main():
     args = parse_args()
     base = load_rgba(args.base)
+    logo_report = {}
     result,report = repair_sheet(base,load_rgba(args.outfit),rows=args.rows,cols=args.cols,
                                  colors=args.colors,background_threshold=args.background_threshold,
                                  skin_expand=args.skin_expand,outline=not getattr(args,'no_outline',False),
@@ -1717,12 +2272,13 @@ def main():
                                  base_profile=load_base_profile(args.base_profile,base,args.rows,args.cols) if getattr(args,'base_profile',None) else None,
                                  lock_base=not getattr(args,'free_skin',False),
                                  composition=getattr(args,'composition','pinned'),
+                                 logo_cleanup=args.logo_cleanup, logo_report=logo_report,
                                  retouch=load_rgba(args.retouch) if getattr(args,'retouch',None) else None)
     args.output.parent.mkdir(parents=True,exist_ok=True)
     result.save(args.output)
     if args.report:
         args.report.parent.mkdir(parents=True,exist_ok=True)
-        args.report.write_text(json.dumps({'frames':report},indent=2),encoding='utf-8')
+        args.report.write_text(json.dumps({'frames':report, 'logoCleanup':logo_report},indent=2),encoding='utf-8')
 
 
 if __name__ == '__main__':

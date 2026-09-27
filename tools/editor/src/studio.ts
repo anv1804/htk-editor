@@ -66,7 +66,7 @@ export function setupStudio() {
   byId('btnResetFrameAll').textContent = 'Đặt lại frame';
   byId('clearFrame').textContent = 'Bỏ nét sửa';
   byId('bottomPanel').firstElementChild!.firstChild!.textContent = 'Khung hình';
-  const exports = section('03 / Xuất ảnh', ['download', 'downloadOutfit', 'split', 'downloadHeadwear', 'downloadReport'].map(byId));
+  const exports = section('03 / Xuất ảnh', ['download', 'downloadBase', 'downloadOutfit', 'downloadHeadwear', 'split', 'downloadReport'].map(byId));
   exports.classList.add('export-menu');
   byId('repair').parentElement!.append(exports);
 

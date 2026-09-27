@@ -6,7 +6,8 @@ import { setupWorkflow, fillRegion } from './workflow';
 import { setupItemStudio } from './item-studio';
 import { state, corrections, correctionContext, baseMap, baseMapContext, paintLayer, paintContext, profileState, storageKey, setProfileState } from './state';
 import { $, status, readFile, loadImage, download } from './utils';
-import { doRepair, ensureProfile } from './api';
+import { doRepair, ensureProfile, currentLearningKey } from './api';
+import { readLearning, writeLearning, mergeConfirmedPixels } from './learning-memory';
 import { settings, grid, render, checkpoint, remember, invalidate, clearResult, point, dab, stroke, setStroke, getEffectiveBrush, setActiveTool, toggleProfileTarget, currentActiveTool, profileTarget, applyZoom, showTab, currentZoom, doUndo, doRedo, panState, updateContentTransform, toggleSymmetry, togglePixelGrid, toggleOnionSkin, toggleCanvasBackground, fitViewToScreen } from './editor';
 import { renderAnimationTimeline, updateFrameThumbnails, renderLivePlayerFrame, togglePlayPause, isPlaying, stopPlaybackLoop, startPlaybackLoop } from './timeline';
 import { initSplitter, saveLayout, restoreLayout } from './layout';
@@ -243,6 +244,7 @@ for (const canvasId of ["baseCanvas", "outfitCanvas", "editCanvas"]) {
     if (isPanning || !g || !state.base || state.busy || mode === "inspect" || event.button !== 0 || isSpacePressed) return;
     if (isProfile && canvas.id !== "baseCanvas") return status("Tô trên khung base để sửa đầu/tay.");
     if (!isProfile && canvas.id === "baseCanvas") return status("Tô trên khung outfit hoặc kết quả để chỉnh lớp ghép.");
+    if (canvas.id === 'editCanvas' && document.body.dataset.view === 'base-layer') return status('Base là lớp tham chiếu. Chọn Outfit hoặc Tóc / mũ để tô sửa.');
     if (isProfile && !profileState.key) return status("Bấm Nhận diện lại base trước khi sửa bản đồ.");
     if (!isProfile && !state.outfit) return;
     
@@ -468,6 +470,54 @@ if (loadPaintEl) loadPaintEl.onchange = async (event: any) => {
 };
 
 const repairEl = $("repair") as HTMLButtonElement;
+const memoryStatus=$('learningStatus');
+$('learnCorrections').onclick=async () => {
+  if (state.busy) return;
+  const revision=state.revision;
+  const key=await currentLearningKey();
+  if (!key) return status('Chọn đủ Base và Outfit trước khi ghi nhớ.',true);
+  if (revision!==state.revision) return;
+  try {
+    const saved=readLearning(localStorage,key);
+    let pixels=0;
+    const merged: string[]=[];
+    for (const [canvas,prior] of [[corrections,saved?.mask],[paintLayer,saved?.paint]] as const) {
+      const combined=document.createElement('canvas');combined.width=canvas.width;combined.height=canvas.height;
+      const ctx=combined.getContext('2d')!;
+      if (prior) ctx.drawImage(await loadImage(prior),0,0);
+      const previous=ctx.getImageData(0,0,combined.width,combined.height);
+      const current=canvas.getContext('2d')!.getImageData(0,0,canvas.width,canvas.height).data;
+      const reset=canvas===paintLayer ? correctionContext.getImageData(0,0,canvas.width,canvas.height).data : undefined;
+      const data=mergeConfirmedPixels(previous.data,current,reset);
+      previous.data.set(data);ctx.putImageData(previous,0,0);
+      for (let i=3;i<data.length;i+=4) if (data[i]!>=128) pixels++;
+      merged.push(combined.toDataURL());
+    }
+    if (revision!==state.revision) return status('Ảnh hoặc nét sửa đã đổi. Bấm Nhớ nét sửa lại.',true);
+    if (!pixels) return status('Tô Giữ tóc, Giữ Outfit, Lộ base hoặc sửa màu trước khi ghi nhớ.',true);
+    writeLearning(localStorage,key,{version:1,mask:merged[0]!,paint:merged[1]!,pixels,updatedAt:Date.now()});
+    memoryStatus.textContent=`Đã ghi nhớ ${pixels} pixel bạn xác nhận. Bấm Xử lý sprite để đối chiếu.`;
+    status(memoryStatus.textContent);
+  } catch { status('Không lưu được ghi nhớ. Bộ nhớ trình duyệt có thể đã đầy; nét sửa hiện tại vẫn được giữ.',true); }
+};
+$('forgetLearning').onclick=async () => {
+  if (state.busy) return;
+  const key=await currentLearningKey();
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+    memoryStatus.textContent='Đã quên bộ ảnh này. Nét sửa đang vẽ vẫn giữ nguyên.';
+    invalidate();render();status(memoryStatus.textContent);
+  } catch { status('Không truy cập được bộ nhớ trình duyệt.',true); }
+};
+$('useLearning').onchange=()=>{invalidate();render();};
+$('reviewLearning').onclick=()=>{
+  const frames=state.report?.learning?.reviewFrames || [];
+  if (!frames.length) return;
+  const input=$('frame') as HTMLInputElement;
+  input.value=String(frames.find(f=>f>Number(input.value)) || frames[0]);
+  input.dispatchEvent(new Event('input',{bubbles:true}));render();
+};
 if (repairEl) repairEl.onclick = async () => {
   if (state.busy) return;
   if (!state.base || !state.outfit) return status("Chọn đủ ảnh base và outfit.", true);
@@ -479,6 +529,7 @@ if (repairEl) repairEl.onclick = async () => {
   repairEl.disabled = true;
   ($("split") as HTMLButtonElement).disabled = ($("downloadOutfit") as HTMLButtonElement).disabled = ($("downloadHeadwear") as HTMLButtonElement).disabled = true;
   ($("download") as HTMLButtonElement).disabled = ($("downloadReport") as HTMLButtonElement).disabled = true;
+  ($('downloadBase') as HTMLButtonElement).disabled = true;
   status("Đang tách vùng, tô màu và hoàn thiện viền…");
   try {
     if (($("composition") as HTMLSelectElement).value === 'pinned') await ensureProfile();
@@ -488,21 +539,37 @@ if (repairEl) repairEl.onclick = async () => {
     if (!response.ok) throw new Error(result.error || "Không xử lý được ảnh.");
     if (!result.report?.composition) throw new Error("Server chưa cập nhật chế độ ghép lớp. Khởi động lại server.");
     if ((result.report?.version || 0) < 6) throw new Error("Server chưa cập nhật v3. Khởi động lại tools/repair_outfit_ui.py.");
-    const [image, mask, outfitImage] = await Promise.all([loadImage(result.image), loadImage(result.mask), result.outfitLayer ? loadImage(result.outfitLayer) : Promise.resolve(null)]);
+    const [image, mask, outfitImage, headwearImage, baseImage] = await Promise.all([
+      loadImage(result.image), loadImage(result.mask),
+      result.outfitLayer ? loadImage(result.outfitLayer) : Promise.resolve(null),
+      result.headwearLayer ? loadImage(result.headwearLayer) : Promise.resolve(null),
+      result.baseLayer ? loadImage(result.baseLayer) : Promise.resolve(null)]);
     if (revision !== state.revision) return status("Thiết lập đã đổi trong khi xử lý. Bấm Xử lý sprite để cập nhật.");
     state.result = image; state.mask = mask; state.report = result.report;
     state.outfitLayer = result.outfitLayer;
     state.outfitLayerImage = outfitImage;
     state.headwearLayer = result.headwearLayer;
+    state.headwearLayerImage = headwearImage;
+    state.baseLayer = result.baseLayer;
+    state.baseLayerImage = baseImage;
+    ($('downloadBase') as HTMLButtonElement).disabled = !result.baseLayer;
     ($("split") as HTMLButtonElement).disabled = !result.headwearLayer;
-    ($("downloadHeadwear") as HTMLButtonElement).disabled = true;
+    ($("downloadHeadwear") as HTMLButtonElement).disabled = !result.headwearLayer;
     $("splitPreview").hidden = true;
     ($("downloadOutfit") as HTMLButtonElement).disabled = false;
     ($("resultPreview") as HTMLImageElement).src = result.image;
     $("resultStage").classList.add("loaded");
     $("resultMeta").textContent = `${result.width} × ${result.height} · ${result.frameCount} frame · ${result.paletteColors} màu`;
     ($("download") as HTMLButtonElement).disabled = ($("downloadReport") as HTMLButtonElement).disabled = false;
-    status(`Hoàn tất: ${result.paletteColors} màu. ${result.report!.composition !== 'pinned' ? 'Outfit ở trên base; kiểm tra mask và tô sửa vùng cần thiết.' : 'Đang dùng profile đầu/tay cố định.'}`);
+    const logo = result.report?.logoCleanup;
+    const logoMessage = logo?.status === 'restored' ? ` Đã xử lý logo Gemini (${logo.correctedPixels} pixel).`
+      : logo?.status === 'uncertain' ? ' Logo góc chưa đủ rõ để tự xử lý; vùng này được giữ nguyên.' : '';
+    const learning=result.report?.learning;
+    const learned=learning ? ` Đối chiếu ${learning.iterations || 0} vòng, khôi phục ${learning.recoveredHairPixels || 0} pixel tóc.` : '';
+    const reviewCount=learning?.reviewFrames?.length || 0;
+    $('reviewLearning').hidden=!reviewCount;
+    memoryStatus.textContent=learning ? `${learned.trim()} Dùng ${(learning.rememberedMaskPixels || 0)+(learning.rememberedPaintPixels || 0)} pixel đã ghi nhớ.${reviewCount ? ` ${reviewCount} frame có vùng chưa chắc chắn.` : ''}` : 'Chế độ này không đối chiếu tóc.';
+    status(`Hoàn tất: ${result.paletteColors} màu.${logoMessage}${learned}`);
     remember();
   } catch (error: any) {
     status(error instanceof TypeError ? "Không kết nối được server. Chạy tools/repair_outfit_ui.py rồi mở http://127.0.0.1:8765/." : error.message, true);
@@ -514,6 +581,8 @@ if (repairEl) repairEl.onclick = async () => {
 const downloadEl = $("download");
 if (downloadEl) downloadEl.onclick = () => { if (state.result) download(state.result.src, "outfit-repaired.png"); };
 const downloadOutfitEl = $("downloadOutfit");
+const downloadBaseEl = $('downloadBase');
+if (downloadBaseEl) downloadBaseEl.onclick = () => { if (state.baseLayer) download(state.baseLayer, 'base-layer.png'); };
 if (downloadOutfitEl) downloadOutfitEl.onclick = () => { if (state.outfitLayer) download(state.outfitLayer, "outfit-layer.png"); };
 
 const splitEl = $("split");

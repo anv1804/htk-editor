@@ -1,6 +1,13 @@
 import { state, baseMap, profileState, setProfileState, corrections, paintLayer } from './state';
 import { $, loadImage } from './utils';
 import { grid, checkpoint, render } from './editor';
+import { learningKey, readLearning } from './learning-memory';
+
+export async function currentLearningKey() {
+  const g=grid();
+  if (!g || !state.base || !state.outfit) return null;
+  return learningKey(state.base.src,state.outfit.src,g.rows,g.cols);
+}
 
 export async function ensureProfile(force = false) {
   if (!state.base) throw new Error("Chọn ảnh base trước.");
@@ -56,6 +63,8 @@ export async function doRepair() {
     const colors = Number(($("colors") as HTMLInputElement).value);
     const outline = ($("outline") as HTMLInputElement).checked;
     const composition = ($("composition") as HTMLSelectElement).value;
+    const key=await currentLearningKey();
+    const saved=key && ($('useLearning') as HTMLInputElement).checked ? readLearning(localStorage,key) : null;
 
     const response = await fetch("/api/repair", { 
       method: "POST", 
@@ -73,9 +82,12 @@ export async function doRepair() {
         paint: paint, 
         overrides: corrections.toDataURL(),
         composition: composition,
+        logoCleanup: ($('logoCleanup') as HTMLSelectElement).value,
         lockBase: true, 
         baseProfile: composition === 'pinned' ? baseMap.toDataURL() : null, 
-        retouch: paintLayer.toDataURL()
+        retouch: paintLayer.toDataURL(),
+        learnedOverrides: saved?.mask,
+        learnedRetouch: saved?.paint
     }) });
     return response;
 }

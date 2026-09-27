@@ -1,0 +1,284 @@
+{
+  "frames": [
+    {
+      "outfit_pixels": 535,
+      "restored_anatomy_pixels": 449,
+      "removed_outfit_anatomy_pixels": 451,
+      "removed_noise_pixels": 38,
+      "head_pixels": 370,
+      "outlined_outfit_pixels": 97,
+      "row": 0,
+      "col": 0
+    },
+    {
+      "outfit_pixels": 567,
+      "restored_anatomy_pixels": 452,
+      "removed_outfit_anatomy_pixels": 422,
+      "removed_noise_pixels": 32,
+      "head_pixels": 370,
+      "outlined_outfit_pixels": 83,
+      "row": 0,
+      "col": 1
+    },
+    {
+      "outfit_pixels": 425,
+      "restored_anatomy_pixels": 407,
+      "removed_outfit_anatomy_pixels": 399,
+      "removed_noise_pixels": 58,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 71,
+      "row": 0,
+      "col": 2
+    },
+    {
+      "outfit_pixels": 410,
+      "restored_anatomy_pixels": 425,
+      "removed_outfit_anatomy_pixels": 394,
+      "removed_noise_pixels": 40,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 81,
+      "row": 0,
+      "col": 3
+    },
+    {
+      "outfit_pixels": 621,
+      "restored_anatomy_pixels": 363,
+      "removed_outfit_anatomy_pixels": 320,
+      "removed_noise_pixels": 39,
+      "head_pixels": 257,
+      "outlined_outfit_pixels": 116,
+      "row": 1,
+      "col": 0
+    },
+    {
+      "outfit_pixels": 658,
+      "restored_anatomy_pixels": 479,
+      "removed_outfit_anatomy_pixels": 405,
+      "removed_noise_pixels": 48,
+      "head_pixels": 339,
+      "outlined_outfit_pixels": 133,
+      "row": 1,
+      "col": 1
+    },
+    {
+      "outfit_pixels": 606,
+      "restored_anatomy_pixels": 427,
+      "removed_outfit_anatomy_pixels": 408,
+      "removed_noise_pixels": 42,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 114,
+      "row": 1,
+      "col": 2
+    },
+    {
+      "outfit_pixels": 540,
+      "restored_anatomy_pixels": 414,
+      "removed_outfit_anatomy_pixels": 398,
+      "removed_noise_pixels": 49,
+      "head_pixels": 335,
+      "outlined_outfit_pixels": 106,
+      "row": 1,
+      "col": 3
+    },
+    {
+      "outfit_pixels": 487,
+      "restored_anatomy_pixels": 441,
+      "removed_outfit_anatomy_pixels": 424,
+      "removed_noise_pixels": 36,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 80,
+      "row": 2,
+      "col": 0
+    },
+    {
+      "outfit_pixels": 444,
+      "restored_anatomy_pixels": 381,
+      "removed_outfit_anatomy_pixels": 390,
+      "removed_noise_pixels": 48,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 80,
+      "row": 2,
+      "col": 1
+    },
+    {
+      "outfit_pixels": 458,
+      "restored_anatomy_pixels": 393,
+      "removed_outfit_anatomy_pixels": 384,
+      "removed_noise_pixels": 28,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 81,
+      "row": 2,
+      "col": 2
+    },
+    {
+      "outfit_pixels": 469,
+      "restored_anatomy_pixels": 460,
+      "removed_outfit_anatomy_pixels": 403,
+      "removed_noise_pixels": 25,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 88,
+      "row": 2,
+      "col": 3
+    },
+    {
+      "outfit_pixels": 626,
+      "restored_anatomy_pixels": 368,
+      "removed_outfit_anatomy_pixels": 368,
+      "removed_noise_pixels": 63,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 156,
+      "row": 3,
+      "col": 0
+    },
+    {
+      "outfit_pixels": 703,
+      "restored_anatomy_pixels": 382,
+      "removed_outfit_anatomy_pixels": 400,
+      "removed_noise_pixels": 47,
+      "head_pixels": 338,
+      "outlined_outfit_pixels": 176,
+      "row": 3,
+      "col": 1
+    },
+    {
+      "outfit_pixels": 732,
+      "restored_anatomy_pixels": 369,
+      "removed_outfit_anatomy_pixels": 395,
+      "removed_noise_pixels": 91,
+      "head_pixels": 337,
+      "outlined_outfit_pixels": 202,
+      "row": 3,
+      "col": 2
+    },
+    {
+      "outfit_pixels": 625,
+      "restored_anatomy_pixels": 377,
+      "removed_outfit_anatomy_pixels": 392,
+      "removed_noise_pixels": 63,
+      "head_pixels": 341,
+      "outlined_outfit_pixels": 193,
+      "row": 3,
+      "col": 3
+    },
+    {
+      "outfit_pixels": 649,
+      "restored_anatomy_pixels": 441,
+      "removed_outfit_anatomy_pixels": 414,
+      "removed_noise_pixels": 46,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 118,
+      "row": 4,
+      "col": 0
+    },
+    {
+      "outfit_pixels": 652,
+      "restored_anatomy_pixels": 356,
+      "removed_outfit_anatomy_pixels": 361,
+      "removed_noise_pixels": 55,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 173,
+      "row": 4,
+      "col": 1
+    },
+    {
+      "outfit_pixels": 545,
+      "restored_anatomy_pixels": 408,
+      "removed_outfit_anatomy_pixels": 414,
+      "removed_noise_pixels": 48,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 135,
+      "row": 4,
+      "col": 2
+    },
+    {
+      "outfit_pixels": 579,
+      "restored_anatomy_pixels": 434,
+      "removed_outfit_anatomy_pixels": 415,
+      "removed_noise_pixels": 39,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 86,
+      "row": 4,
+      "col": 3
+    },
+    {
+      "outfit_pixels": 408,
+      "restored_anatomy_pixels": 340,
+      "removed_outfit_anatomy_pixels": 355,
+      "removed_noise_pixels": 25,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 82,
+      "row": 5,
+      "col": 0
+    },
+    {
+      "outfit_pixels": 400,
+      "restored_anatomy_pixels": 407,
+      "removed_outfit_anatomy_pixels": 393,
+      "removed_noise_pixels": 38,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 86,
+      "row": 5,
+      "col": 1
+    },
+    {
+      "outfit_pixels": 464,
+      "restored_anatomy_pixels": 422,
+      "removed_outfit_anatomy_pixels": 413,
+      "removed_noise_pixels": 45,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 75,
+      "row": 5,
+      "col": 2
+    },
+    {
+      "outfit_pixels": 444,
+      "restored_anatomy_pixels": 385,
+      "removed_outfit_anatomy_pixels": 374,
+      "removed_noise_pixels": 32,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 81,
+      "row": 5,
+      "col": 3
+    },
+    {
+      "outfit_pixels": 400,
+      "restored_anatomy_pixels": 336,
+      "removed_outfit_anatomy_pixels": 342,
+      "removed_noise_pixels": 52,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 93,
+      "row": 6,
+      "col": 0
+    },
+    {
+      "outfit_pixels": 371,
+      "restored_anatomy_pixels": 359,
+      "removed_outfit_anatomy_pixels": 368,
+      "removed_noise_pixels": 49,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 93,
+      "row": 6,
+      "col": 1
+    },
+    {
+      "outfit_pixels": 417,
+      "restored_anatomy_pixels": 336,
+      "removed_outfit_anatomy_pixels": 344,
+      "removed_noise_pixels": 42,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 100,
+      "row": 6,
+      "col": 2
+    },
+    {
+      "outfit_pixels": 382,
+      "restored_anatomy_pixels": 336,
+      "removed_outfit_anatomy_pixels": 344,
+      "removed_noise_pixels": 45,
+      "head_pixels": 336,
+      "outlined_outfit_pixels": 100,
+      "row": 6,
+      "col": 3
+    }
+  ]
+}

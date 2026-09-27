@@ -104,8 +104,14 @@ export function setupWorkspace() {
   const retouch=document.createElement('div');retouch.className='inspector-page';retouch.hidden=true;
   adjustment.append(process);
   const layerStack=document.createElement('details');layerStack.className='layer-stack';
-  layerStack.innerHTML='<summary>THỨ TỰ GHÉP</summary><div><i class="layer-dot paint-dot"></i><span>Nét tô của bạn<small>Lớp trên cùng</small></span><b>03</b></div><div><i class="layer-dot outfit-dot"></i><span>Trang phục<small>Cắt da, giữ vải</small></span><b>02</b></div><div><i class="layer-dot base-dot"></i><span>Nhân vật gốc<small>Hiện qua phần đã cắt</small></span><b>01</b></div>';
+  layerStack.innerHTML='<summary>3 LỚP NHÂN VẬT</summary><div><i class="layer-dot paint-dot"></i><span>Tóc · băng cài · mũ<small>Lớp trên cùng</small></span><b>03</b></div><div><i class="layer-dot outfit-dot"></i><span>Outfit<small>Trang phục, không chứa da tay</small></span><b>02</b></div><div><i class="layer-dot base-dot"></i><span>Base<small>Nhân vật gốc và da tay</small></span><b>01</b></div>';
   adjustment.append(layerStack);
+  const learning=document.createElement('details');learning.className='learning-panel shortcut-guide';
+  learning.innerHTML='<summary>Đối chiếu & ghi nhớ</summary><p>Tự đối chiếu tóc giữa các frame. Chỉ ghi nhớ nét sửa khi bạn xác nhận.</p><label><input id="useLearning" type="checkbox" checked> Dùng chỉnh sửa đã ghi nhớ</label><div class="learning-actions"><button id="learnCorrections">Nhớ nét sửa</button><button id="forgetLearning">Quên bộ này</button></div><p id="learningStatus" role="status">Ghi nhớ riêng cho từng bộ ảnh và bố cục frame, lưu trên trình duyệt này.</p><button id="reviewLearning" hidden>Đến frame cần kiểm tra</button>';
+  adjustment.append(learning);
+  for (const panel of [process,layerStack,learning]) panel.addEventListener('toggle',()=>{
+    if (panel.open) for (const other of [process,layerStack,learning]) if (other!==panel) other.open=false;
+  });
   const fill=document.querySelector('.editing-options')!;
   retouch.append(fill,masks,$('profileStatus').closest('details')!);
   for (const [label,page] of [['Điều chỉnh',adjustment],['Tô & mask',retouch]] as const) {

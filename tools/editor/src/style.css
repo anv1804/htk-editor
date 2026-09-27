@@ -37,6 +37,7 @@
 .studio .view-modes { padding: 6px 12px; background: #151d23; border-bottom: 1px solid #303b44; flex-shrink: 0; }
 .studio .view-modes button[aria-pressed=true] { color: #67ead0; border-color: #288c7c; background: #15362f; }
 .studio[data-view=result] .frame-grid > .viewport-card:not(:last-child), .studio[data-view=layer] .frame-grid > .viewport-card:not(:last-child) { display: none; }
+.studio[data-view=headwear] .frame-grid > .viewport-card:not(:last-child), .studio[data-view=base-layer] .frame-grid > .viewport-card:not(:last-child) { display: none; }
 .studio .editing-options { border: 1px solid #34424c; background: #172129; padding: 12px; border-radius: 8px; display: grid; gap: 10px; }
 .studio .editing-options strong { color: #72ddc7; }
 .studio .editing-options[hidden] { display: none; }

@@ -1,5 +1,5 @@
 import type { AnimationDef } from './types';
-import { state } from './state';
+import { state, compositePreview } from './state';
 import { $ } from './utils';
 
 export const ANIMATION_DEFS: AnimationDef[] = [
@@ -78,14 +78,14 @@ export function renderAnimationTimeline() {
 }
 
 export function updateFrameThumbnails() {
-  const srcImg = (document.body.dataset.view === 'layer' ? state.outfitLayerImage : state.result) || state.outfit || state.base;
+  const srcImg = state.result || state.outfit || state.base;
   if (!srcImg) return;
   const cols = Number(($("cols") as HTMLInputElement)?.value) || 4;
   const rows = Number(($("rows") as HTMLInputElement)?.value) || 7;
   const fw = srcImg.width / cols, fh = srcImg.height / rows;
   const frameInput = $("frame") as HTMLInputElement;
   const currentFrame = parseInt(frameInput?.value, 10) || 1;
-  const editCanvas = $("editCanvas") as HTMLCanvasElement;
+  const editCanvas = compositePreview;
 
   for (let f = 1; f <= cols * rows; f++) {
     const cvs = $(`thumbCanvas_${f}`) as HTMLCanvasElement;
@@ -93,7 +93,7 @@ export function updateFrameThumbnails() {
     const ctx = cvs.getContext("2d")!;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, cvs.width, cvs.height);
-    if (f === currentFrame && editCanvas && editCanvas.width > 0) {
+    if (f === currentFrame && editCanvas.dataset.frame === String(f) && editCanvas.width > 0) {
       ctx.drawImage(editCanvas, 0, 0, editCanvas.width, editCanvas.height, 0, 0, cvs.width, cvs.height);
     } else {
       const colIdx = (f - 1) % cols, rowIdx = Math.floor((f - 1) / cols);
@@ -105,7 +105,7 @@ export function updateFrameThumbnails() {
 export function renderLivePlayerFrame(frameNumber: number) {
   const animPreviewCanvas = $("animPreviewCanvas") as HTMLCanvasElement;
   if (!animPreviewCanvas) return;
-  const srcImg = (document.body.dataset.view === 'layer' ? state.outfitLayerImage : state.result) || state.outfit || state.base;
+  const srcImg = state.result || state.outfit || state.base;
   if (!srcImg) return;
   const cols = Number(($("cols") as HTMLInputElement)?.value) || 4;
   const rows = Number(($("rows") as HTMLInputElement)?.value) || 7;
@@ -120,9 +120,9 @@ export function renderLivePlayerFrame(frameNumber: number) {
 
   const frameInput = $("frame") as HTMLInputElement;
   const currentFrame = parseInt(frameInput?.value, 10) || 1;
-  const editCanvas = $("editCanvas") as HTMLCanvasElement;
+  const editCanvas = compositePreview;
 
-  if (frameNumber === currentFrame && editCanvas && editCanvas.width > 0) {
+  if (frameNumber === currentFrame && editCanvas.dataset.frame === String(frameNumber) && editCanvas.width > 0) {
     ctx.drawImage(editCanvas, 0, 0, editCanvas.width, editCanvas.height, 0, 0, fw, fh);
   } else {
     const colIdx = (frameNumber - 1) % cols, rowIdx = Math.floor((frameNumber - 1) / cols);

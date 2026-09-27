@@ -136,3 +136,8 @@
 .atelier .as-switch input:checked + .as-switch-slider { background:#8e7cc1; }
 @media(max-width:1200px) { .atelier #leftPanel { width:226px; }.atelier #rightPanel { width:252px; }.atelier .workspace-tag { display:none; }.atelier .canvas-tools.aseprite-vertical-toolbox { gap:1px; padding:8px; }.atelier .canvas-tools [data-brush-val] { width:30px; min-width:30px; } }
 @media(max-width:850px) { .atelier header { height:auto; min-height:92px; padding:10px; }.atelier header > div:first-child { flex:1; }.atelier .brand-copy strong { font-size:15px; }.atelier .brand-copy span { display:block !important; }.atelier #leftPanel,.atelier #rightPanel { width:280px !important; }.atelier .panel-toggle { color:#bdb1db; border-color:#4c435f; }.atelier .canvas-tools.aseprite-vertical-toolbox { padding:7px 10px; }.atelier .brush-controls { margin-left:auto; }.atelier .history-controls { margin-left:0; } }
+.learning-panel p {font-size:11px;line-height:1.6;color:var(--as-muted,#9ca5b7);margin:8px 0;}
+.learning-panel label {display:flex;gap:7px;align-items:center;font-size:11px;}
+.learning-actions {display:flex;gap:8px;margin-top:10px;}
+.learning-actions button {flex:1;padding:7px 6px;border:1px solid #3b4053;border-radius:6px;background:#262a37;color:#dfdaff;font-size:11px;}
+.learning-actions button:hover {background:#343147;border-color:#9987d5;}

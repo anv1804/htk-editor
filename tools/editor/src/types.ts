@@ -26,6 +26,7 @@ export interface RepairSettings {
   paint: number;
   cleanup: number;
   composition: string;
+  logoCleanup: 'auto' | 'off';
 }
 
 export interface FrameReport {
@@ -37,6 +38,9 @@ export interface FrameReport {
 export interface RepairReport {
   version: number;
   composition: string;
+  logoCleanup?: { status: string; correctedPixels: number };
+  learning?: { iterations?: number; recoveredHairPixels?: number; converged?: boolean;
+    rememberedMaskPixels?: number; rememberedPaintPixels?: number; reviewFrames?: number[]; automaticPaletteBudget?: number };
   // ... other fields
 }
 
@@ -53,6 +57,9 @@ export interface AppState {
   outfitLayer?: string;
   outfitLayerImage?: HTMLImageElement | null;
   headwearLayer?: string;
+  headwearLayerImage?: HTMLImageElement | null;
+  baseLayer?: string;
+  baseLayerImage?: HTMLImageElement | null;
 }
 
 export interface StrokeState {

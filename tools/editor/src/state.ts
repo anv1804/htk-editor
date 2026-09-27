@@ -20,6 +20,9 @@ export const baseMapContext = baseMap.getContext("2d", { willReadFrequently: tru
 
 export const paintLayer = document.createElement("canvas");
 export const paintContext = paintLayer.getContext("2d", { willReadFrequently: true })!;
+// Animation and timeline always show the assembled character, independent of
+// which isolated layer is open in the editing canvas.
+export const compositePreview = document.createElement('canvas');
 
 export const storageKey = "outfit-repair-v2";
 

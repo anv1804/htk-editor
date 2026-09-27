@@ -8,7 +8,9 @@ export function fillRegion(canvas: HTMLCanvasElement, x: number, y: number) {
   if (!g || !state.outfit || state.busy) return;
   const source = document.createElement('canvas'); source.width = g.w; source.height = g.h;
   const ctx = source.getContext('2d')!;
-  ctx.drawImage(canvas.id === 'outfitCanvas' ? state.outfit : (document.body.dataset.view === 'layer' ? state.outfitLayerImage : state.result) || state.outfit,
+  const layerSource = document.body.dataset.view === 'layer' ? state.outfitLayerImage
+    : document.body.dataset.view === 'headwear' ? state.headwearLayerImage : state.result;
+  ctx.drawImage(canvas.id === 'outfitCanvas' ? state.outfit : layerSource || state.outfit,
     g.x,g.y,g.w,g.h,0,0,g.w,g.h);
   if (canvas.id !== 'outfitCanvas') ctx.drawImage(paintLayer,g.x,g.y,g.w,g.h,0,0,g.w,g.h);
   const selected = connectedRegion(ctx.getImageData(0,0,g.w,g.h).data,g.w,g.h,x,y,
@@ -23,6 +25,10 @@ export function fillRegion(canvas: HTMLCanvasElement, x: number, y: number) {
     const px=g.x+index%g.w, py=g.y+Math.floor(index/g.w);
     paintContext.clearRect(px,py,1,1); correctionContext.clearRect(px,py,1,1);
     (mode === 'color' ? paintContext : correctionContext).fillRect(px,py,1,1);
+    if (mode === 'color' && canvas.id === 'editCanvas' && ['headwear','layer'].includes(document.body.dataset.view || '')) {
+      correctionContext.fillStyle = document.body.dataset.view === 'headwear' ? '#ffc800' : '#0000ff';
+      correctionContext.fillRect(px,py,1,1);
+    }
   }
   invalidate(`Đã sửa ${selected.length} pixel trong frame ${g.frame+1}. Bấm Xử lý để cập nhật bản xuất.`);
   render(); remember();
@@ -54,6 +60,8 @@ export function setupWorkflow(setSource: (kind: 'base'|'outfit',url: string)=>Pr
       if (file.size>64*1024*1024) throw new Error('Dự án vượt quá 64 MB.');
       const p=JSON.parse(await file.text());
       if (p.format!=='hkt-outfit-project' || p.version!==1) throw new Error('Không đúng định dạng dự án Outfit Studio.');
+      // Older projects predate the optional logo restoration setting.
+      p.values = { ...p.values, logoCleanup: p.values?.logoCleanup ?? 'auto' };
       const urls=[p.base,p.outfit,p.corrections,p.paint,...(p.profile?[p.profile]:[])];
       if (urls.some(url=>typeof url!=='string' || !url.startsWith('data:image/png;base64,'))) throw new Error('Dự án phải chứa ảnh PNG nhúng.');
       const images=await Promise.all(urls.map(loadImage));
@@ -106,14 +114,14 @@ export function setupWorkflow(setSource: (kind: 'base'|'outfit',url: string)=>Pr
   // Runs after persisted settings are restored as well.
   document.addEventListener('studio-ready',updatePalette);
   const views=document.createElement('div'); views.className='view-modes';
-  for (const [key,label] of [['compare','So sánh'],['result','Kết quả'],['layer','Lớp outfit']]) {
+  for (const [key,label] of [['compare','So sánh'],['result','Kết quả'],['base-layer','Base'],['layer','Outfit'],['headwear','Tóc / mũ']]) {
     const b=button(`view-${key}`,label!); b.dataset.view=key;
     b.onclick=()=>{
       document.body.dataset.view=key;
-      showTab('inspector');
+      if (key==='compare') showTab('inspector');
       views.querySelectorAll('button').forEach(el=>el.setAttribute('aria-pressed',String(el===b)));
       const labelEl=$('editCanvas').closest('.viewport-card')!.querySelector('.viewport-header > span');
-      if (labelEl) labelEl.textContent=key==='layer'?'● Lớp outfit':'● Kết quả';
+      if (labelEl) labelEl.textContent=key==='layer'?'● Lớp outfit':key==='headwear'?'● Tóc / băng cài / mũ':key==='base-layer'?'● Base · tham chiếu':'● Kết quả';
       render(); fitViewToScreen();
     };
     b.setAttribute('aria-pressed',String(key==='compare')); views.append(b);

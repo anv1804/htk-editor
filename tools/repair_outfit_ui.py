@@ -16,7 +16,7 @@ from typing import Any
 from PIL import Image
 import numpy as np
 
-from repair_outfit_sprite import repair_sheet, build_base_profile, base_profile_identity
+from repair_outfit_sprite import repair_sheet, build_base_profile, base_profile_identity, foreground_mask
 
 
 ROOT = Path(__file__).resolve().parent
@@ -84,13 +84,14 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     paint = int(payload.get('paint', 4))
     outline = payload.get('outline', True)
     composition = payload.get('composition','layers')
+    logo_cleanup = payload.get('logoCleanup', 'auto')
     if not isinstance(outline, bool):
         raise ValueError('Outline must be true or false')
 
     if not 1 <= rows <= 64 or not 1 <= cols <= 64:
         raise ValueError("Rows and columns must be between 1 and 64")
-    if not 0 <= colors <= 256:
-        raise ValueError("Palette colors must be between 0 and 256")
+    if not -1 <= colors <= 256:
+        raise ValueError("Palette colors must be -1 (automatic) or between 0 and 256")
     if not 0 <= skin_expand <= 4:
         raise ValueError("Skin expansion must be between 0 and 4")
 
@@ -98,7 +99,28 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     outfit = decode_image(str(payload.get("outfit", "")))
     if max(base.width*base.height, outfit.width*outfit.height) > 4_194_304:
         raise ValueError('Sheet must contain at most 4 million pixels')
-    overrides = decode_image(payload['overrides']) if payload.get('overrides') else None
+    def merge_memory(current, saved):
+        active=decode_image(payload[current]) if payload.get(current) else None
+        memory=decode_image(payload[saved]) if payload.get(saved) else None
+        for image in (active,memory):
+            if image is not None and image.size != base.size:
+                raise ValueError('Saved corrections must match the sheet dimensions')
+        if memory is None:
+            return active,0
+        merged=np.array(memory)
+        if current == 'retouch' and payload.get('overrides'):
+            corrections=decode_image(payload['overrides'])
+            if corrections.size != base.size:
+                raise ValueError('Saved corrections must match the sheet dimensions')
+            merged[np.asarray(corrections)[:,:,3]>=128]=0
+        if active is not None:
+            pixels=np.asarray(active); marked=pixels[:,:,3]>=128
+            merged[marked]=pixels[marked]
+        return Image.fromarray(merged),int((np.asarray(memory)[:,:,3]>=128).sum())
+    overrides,remembered_mask=merge_memory('overrides','learnedOverrides')
+    retouch,remembered_paint=merge_memory('retouch','learnedRetouch')
+    logo_report = {}
+    learning_report = {}
     repaired, frames, mask = repair_sheet(
         base,
         outfit,
@@ -114,9 +136,12 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         return_masks=True,
         accessories=True,
         composition=composition,
+        logo_cleanup=logo_cleanup,
+        logo_report=logo_report,
+        learning_report=learning_report,
         lock_base=bool(payload.get('lockBase',True)),
         base_profile=decode_image(payload['baseProfile']) if payload.get('baseProfile') else None,
-        retouch=decode_image(payload['retouch']) if payload.get('retouch') else None,
+        retouch=retouch,
     )
     opaque_colors = len({p[:3] for p in repaired.get_flattened_data() if p[3]}) if hasattr(repaired, 'get_flattened_data') else len({p[:3] for p in repaired.getdata() if p[3]})
     outfit_layer = np.array(repaired)
@@ -126,7 +151,23 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     head_layer = np.array(repaired)
     head_layer[~headwear] = 0
     outfit_layer[~garment] = 0
+    # Export an actual bottom layer, including the body hidden under clothes.
+    # The original source remains untouched. Explicit full-pixel erasures and
+    # legacy reconstructed anatomy must also survive three-layer reassembly.
+    base_layer = np.array(base.convert('RGBA'))
+    cw, ch = base.width//cols, base.height//rows
+    for y in range(0,base.height,ch):
+        for x in range(0,base.width,cw):
+            tile = base_layer[y:y+ch,x:x+cw]
+            fg = foreground_mask(tile,threshold)
+            tile[~fg] = 0
+            tile[fg,3] = 255
+    anatomy = np.all(np.asarray(mask)[:,:,:3] == [255,80,80],axis=2)
+    anatomy |= np.all(np.asarray(mask)[:,:,:3] == [240,190,60],axis=2)
+    base_layer[anatomy] = np.asarray(repaired)[anatomy]
+    base_layer[np.asarray(repaired)[:,:,3] == 0] = 0
     return {
+        'baseLayer': encode_png(Image.fromarray(base_layer)),
         'outfitLayer': encode_png(Image.fromarray(outfit_layer)),
         'headwearLayer': encode_png(Image.fromarray(head_layer)),
         "image": encode_png(repaired),
@@ -140,12 +181,24 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         'paletteColors': opaque_colors,
         'mask': encode_png(mask),
         'report': {'version': 6, 'assetVersion': 3, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
-                   'processingRevision': 'source-fabric-veto-bounded-tones-17',
-                   'skinRemoval': 'source-face-palette; source-fabric-veto; bounded-palm-recovery',
+                   'processingRevision': 'source-neckline-25',
+                   'learning': {**learning_report,'rememberedMaskPixels':remembered_mask,
+                                'rememberedPaintPixels':remembered_paint},
+                   'logoCleanup': logo_report,
+                   'layers': [
+                       {'id':'base','name':'Base','order':0},
+                       {'id':'outfit','name':'Outfit','order':1},
+                       {'id':'headwear','name':'Tóc / băng cài / mũ','order':2}],
+                   'skinRemoval': 'diffuse-source-flesh-seeds; covered-equipment-veto; bounded-palm-recovery',
+                   'necklineProtection': 'source-cheek-chroma; continuous-lapels; shared-seam-veto',
+                   'layerLayout': {'rows':rows,'cols':cols,'frameWidth':cw,'frameHeight':ch,
+                                   'trimmed':False,'samePoseLayoutRequired':True,
+                                   'hiddenRegionsReconstructed':False},
                    'composition': composition,
-                   'layerPriority': 'outfit-over-base' if composition != 'pinned' else 'pinned-base-palms; clothing-over-forearms',
+                   'layerPriority': 'headwear-over-outfit-over-base' if composition != 'pinned' else 'headwear-over-outfit; pinned-base-palms',
                    'settings': {'rows': rows, 'cols': cols, 'colors': colors, 'outline': outline,
-                                'paint': paint, 'cleanup': cleanup, 'backgroundThreshold': threshold},
+                                'paint': paint, 'cleanup': cleanup, 'backgroundThreshold': threshold,
+                                'logoCleanup': logo_cleanup},
                    'frames': frames},
     }
 

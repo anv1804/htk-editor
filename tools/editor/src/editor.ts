@@ -1,9 +1,10 @@
-import { state, corrections, correctionContext, baseMap, baseMapContext, paintLayer, paintContext, profileState, storageKey } from './state';
+import { state, corrections, correctionContext, baseMap, baseMapContext, paintLayer, paintContext, compositePreview, profileState, storageKey } from './state';
 import type { GridInfo, StrokeState } from './types';
 import { $, status } from './utils';
 import { saveLayout } from './layout';
+import { previewLayerEdits } from './layer-preview';
 
-export const settings = ["rows", "cols", "colors", "threshold", "outline", "paint", "cleanup", "composition"];
+export const settings = ["rows", "cols", "colors", "threshold", "outline", "paint", "cleanup", "composition", "logoCleanup"];
 export let currentZoom = 4.0;
 export let stroke: StrokeState | null = null;
 export let currentActiveTool = "inspect";
@@ -171,8 +172,13 @@ export function render() {
   
   const outfitCanvas = $("outfitCanvas") as HTMLCanvasElement;
   const outfitContext = drawCrop(outfitCanvas, state.outfit, g);
-  const layerView = document.body.dataset.view === 'layer';
-  const ctx = drawCrop($("editCanvas") as HTMLCanvasElement, layerView ? state.outfitLayerImage || null : state.result, g);
+  const view = document.body.dataset.view;
+  const layerView = view === 'layer';
+  const hairView = view === 'headwear';
+  const baseView = view === 'base-layer';
+  const viewImage = layerView ? state.outfitLayerImage : hairView ? state.headwearLayerImage
+    : baseView ? state.baseLayerImage || state.base : state.result;
+  const ctx = drawCrop($("editCanvas") as HTMLCanvasElement, viewImage || null, g);
   $("editCanvas").closest('.viewport-card')?.classList.toggle('awaiting-result', !state.result);
   
   if (g) {
@@ -188,32 +194,24 @@ export function render() {
     const outfitPixels = outfitSourceCtx.getImageData(0, 0, g.w, g.h).data;
 
     const preview = ctx.getImageData(0, 0, g.w, g.h);
-    for (let i = 0; i < labels.length; i += 4) {
-      if (labels[i+3] >= 128) {
-        // Red: Base reveal (cắt da để lộ base)
-        if (labels[i] > 200 && labels[i+1] < 100 && labels[i+2] < 100) {
-          if (layerView) preview.data.fill(0, i, i+4);
-          else preview.data.set(basePixels.slice(i, i+4), i);
-        }
-        // Green: Erase (xóa thành trong suốt)
-        else if (labels[i+1] > 200 && labels[i] < 100 && labels[i+2] < 100) {
-          preview.data.fill(0, i, i+4);
-        }
-        // Blue: Keep outfit (giữ nguyên outfit/dải lụa, không cắt da)
-        else if (labels[i+2] > 200 && labels[i] < 100) {
-          preview.data.set(outfitPixels.slice(i, i+4), i);
-        }
-        // Yellow: Keep headwear (giữ tóc & phụ kiện đầu)
-        else if (labels[i] > 200 && labels[i+1] > 150 && labels[i+2] < 100) {
-          preview.data.set(outfitPixels.slice(i, i+4), i);
-        }
-      }
-    }
+    sourceCtx.clearRect(0,0,g.w,g.h);
+    if (state.mask) sourceCtx.drawImage(state.mask,g.x,g.y,g.w,g.h,0,0,g.w,g.h);
+    const painted = paintContext.getImageData(g.x,g.y,g.w,g.h).data;
+    const maskPixels = sourceCtx.getImageData(0,0,g.w,g.h).data;
+    previewLayerEdits(preview.data,basePixels,outfitPixels,labels,painted,maskPixels,
+      layerView ? 'outfit' : hairView ? 'headwear' : baseView ? 'base' : 'result');
     ctx.putImageData(preview, 0, 0);
-    ctx.drawImage(paintLayer, g.x, g.y, g.w, g.h, 0, 0, g.w, g.h);
+    compositePreview.width=g.w; compositePreview.height=g.h;
+    compositePreview.dataset.frame=String(g.frame+1);
+    const compositeContext=compositePreview.getContext('2d')!;
+    const compositeSource=state.result || state.outfit || state.base;
+    if (compositeSource) compositeContext.drawImage(compositeSource,g.x,g.y,g.w,g.h,0,0,g.w,g.h);
+    const compositePixels=compositeContext.getImageData(0,0,g.w,g.h);
+    previewLayerEdits(compositePixels.data,basePixels,outfitPixels,labels,painted,maskPixels,'result');
+    compositeContext.putImageData(compositePixels,0,0);
 
     if (isOnionSkinEnabled && g && (state.result || state.outfit)) {
-      const srcImg = layerView ? state.outfitLayerImage : state.result || state.outfit;
+      const srcImg = viewImage || (!layerView && !hairView && !baseView ? state.outfit : null);
       if (g.frame > 0 && srcImg) {
         const prevX = ((g.frame - 1) % g.cols) * g.w;
         const prevY = Math.floor((g.frame - 1) / g.cols) * g.h;
@@ -256,11 +254,16 @@ export function render() {
   if (editCvs) editCvs.style.cursor = ($("brush") as HTMLSelectElement).value === "inspect" ? "default" : "crosshair";
   if (outfitCanvas) outfitCanvas.style.cursor = ($("brush") as HTMLSelectElement).value === "inspect" ? "default" : "crosshair";
   
-  if (state.result) {
-    const sheetZoom = Number(($("sheetZoom") as HTMLSelectElement).value);
-    const resultPreview = $("resultPreview") as HTMLImageElement;
-    if (resultPreview) {
-      resultPreview.style.width = `${state.result.width * sheetZoom}px`;
+    if (state.result) {
+      const sheetZoom = Number(($("sheetZoom") as HTMLSelectElement).value);
+      const resultPreview = $("resultPreview") as HTMLImageElement;
+      if (resultPreview) {
+        // The sheet must follow the same layer selector as the frame editor.
+        // Previously "Outfit" still showed the fully assembled character.
+        if (viewImage && resultPreview.src !== viewImage.src) resultPreview.src = viewImage.src;
+        resultPreview.alt = layerView ? 'Sprite sheet · Outfit' : hairView ? 'Sprite sheet · Tóc / mũ'
+          : baseView ? 'Sprite sheet · Base' : 'Sprite sheet · Kết quả';
+        resultPreview.style.width = `${state.result.width * sheetZoom}px`;
       resultPreview.style.height = `${state.result.height * sheetZoom}px`;
     }
   }
@@ -336,6 +339,7 @@ export function invalidate(message = "Thiết lập đã đổi. Bấm Xử lý 
   ($("downloadOutfit") as HTMLButtonElement).disabled = true;
   ($("split") as HTMLButtonElement).disabled = true;
   ($("downloadHeadwear") as HTMLButtonElement).disabled = true;
+  ($('downloadBase') as HTMLButtonElement).disabled = true;
   $("splitPreview").hidden = true;
   if (state.base && state.outfit) status(message);
 }
@@ -343,6 +347,8 @@ export function invalidate(message = "Thiết lập đã đổi. Bấm Xử lý 
 export function clearResult() {
   state.result = state.mask = state.report = null;
   state.outfitLayerImage = null;
+  state.headwearLayerImage = state.baseLayerImage = null;
+  state.baseLayer = undefined;
   state.outfitLayer = state.headwearLayer = undefined;
   $("resultStage").classList.remove("loaded");
   $("resultPreview").removeAttribute("src");
@@ -377,6 +383,11 @@ function singleDab(p: {x:number, y:number}, g: GridInfo, mode: string) {
   if (mode === "color") {
     // Painting color: write to paintLayer and clear any previous erase/override mark
     correctionContext.clearRect(g.x + x, g.y + y, w, h);
+    const view = document.body.dataset.view;
+    if (stroke?.canvas.id === 'editCanvas' && (view === 'headwear' || view === 'layer')) {
+      correctionContext.fillStyle = view === 'headwear' ? '#ffc800' : '#0000ff';
+      correctionContext.fillRect(g.x+x,g.y+y,w,h);
+    }
     paintContext.fillStyle = ($("paintColor") as HTMLInputElement).value;
     paintContext.fillRect(g.x + x, g.y + y, w, h);
   } else if (mode === "erase") {
