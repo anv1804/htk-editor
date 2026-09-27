@@ -2,7 +2,7 @@ import type { LayoutState } from './types';
 import { currentZoom, currentActiveTool, profileTarget, setActiveTool, applyZoom, showTab } from './editor';
 import { $ } from './utils';
 
-export const LAYOUT_KEY = "hkt-pf-layout-v2";
+export const LAYOUT_KEY = "hkt-pf-layout-v3";
 let saveTimeout: number | null = null;
 
 export function initSplitter(splitterId: string, panelId: string, direction: "h" | "v", side: "before" | "after") {
@@ -26,13 +26,11 @@ export function initSplitter(splitterId: string, panelId: string, direction: "h"
     e.preventDefault();
     const delta = (direction === "h" ? e.clientY : e.clientX) - startPos;
     const sign = (side === "before") ? 1 : -1;
-    const newSize = Math.max(
-      parseInt(getComputedStyle(panel).minWidth || getComputedStyle(panel).minHeight || "80"),
-      Math.min(
-        parseInt(getComputedStyle(panel).maxWidth || getComputedStyle(panel).maxHeight || "600"),
-        startSize + delta * sign
-      )
-    );
+    const style = getComputedStyle(panel);
+    const lower = parseFloat(direction === 'h' ? style.minHeight : style.minWidth);
+    const upper = parseFloat(direction === 'h' ? style.maxHeight : style.maxWidth);
+    const newSize = Math.max(Number.isFinite(lower) ? lower : 130,
+      Math.min(Number.isFinite(upper) ? upper : 600, startSize + delta * sign));
     if (direction === "h") panel.style.height = newSize + "px";
     else panel.style.width = newSize + "px";
   });

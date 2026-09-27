@@ -31,6 +31,88 @@ def run(base,outfit,**kwargs):
 
 
 class LayerCompositionTests(unittest.TestCase):
+    def test_hanging_robe_between_bare_feet_is_preserved_across_material_colors(self):
+        for color in [(50,109,57,255),(65,95,160,255),(155,60,175,255),(220,220,205,255)]:
+            with self.subTest(color=color):
+                base,outfit=fixture()
+                outfit.paste(color,(11,20,13,29))
+                result=run(base,outfit,accessories=True)
+                self.assertEqual(result.getpixel((11,27)),color)
+                self.assertEqual(result.getpixel((8,27)),base.getpixel((8,27)))
+
+    def test_neutral_toe_and_heel_halos_removed_across_clothing_colors(self):
+        for color in [(50,109,57,255),(65,95,160,255),(155,60,175,255),(220,220,205,255)]:
+            with self.subTest(color=color):
+                base,outfit=fixture()
+                outfit.paste(color,(7,10,17,24))
+                outfit.paste((125,121,118,255),(5,27,7,30))
+                outfit.paste((125,121,118,255),(17,27,19,30))
+                result=run(base,outfit,accessories=True)
+                self.assertEqual(result.getpixel((5,28))[3],0)
+                self.assertEqual(result.getpixel((18,28))[3],0)
+                self.assertEqual(result.getpixel((8,27)),base.getpixel((8,27)))
+
+    def test_boots_do_not_get_trimmed_to_bare_foot_shape(self):
+        for color in [(45,45,50,255),(65,95,160,255),(155,60,175,255),(220,220,205,255)]:
+            with self.subTest(color=color):
+                base,outfit=fixture()
+                outfit.paste(color,(5,24,12,31))
+                outfit.paste(color,(13,24,19,31))
+                result=run(base,outfit,accessories=True)
+                self.assertEqual(result.getpixel((5,28)),color)
+                self.assertEqual(result.getpixel((18,28)),color)
+
+    def test_small_white_matte_cluster_beside_bare_heel_is_removed(self):
+        base,outfit=fixture()
+        outfit.paste((212,207,204,255),(5,27,7,30))
+        result=run(base,outfit,accessories=True)
+        self.assertEqual(result.getpixel((5,28))[3],0)
+        self.assertEqual(result.getpixel((8,28)),base.getpixel((8,28)))
+
+    def test_reported_green_heel_has_no_detached_white_matte(self):
+        root=Path(__file__).parent/'fixtures'/'green_outfit'
+        base=Image.open(root/'base.png').convert('RGBA').crop((0,64,64,128))
+        outfit=Image.open(root/'outfit.png').convert('RGBA').crop((0,64,64,128))
+        result=run(base,outfit,accessories=True)
+        self.assertEqual(result.getpixel((29,56))[3],0)
+
+    def test_skin_cutout_does_not_fill_over_colored_cuff_detail(self):
+        base,outfit=fixture()
+        outfit.paste((222,168,132,255),(4,14,8,21))
+        outfit.putpixel((6,17),(50,109,57,255))
+        result=run(base,outfit)
+        self.assertEqual(result.getpixel((6,17)),outfit.getpixel((6,17)))
+
+    def test_blue_cream_robe_does_not_protect_its_source_fists_as_tan_fabric(self):
+        root=Path(__file__).parent/'fixtures'/'outfit_occlusion'
+        base=Image.open(root/'base.png').convert('RGBA').crop((0,0,64,64))
+        outfit=Image.open(root/'outfit.png').convert('RGBA').crop((0,0,64,64))
+        result=run(base,outfit,accessories=True)
+        for point in [(21,49),(22,49),(41,49)]:
+            self.assertEqual(result.getpixel(point),base.getpixel(point))
+        for point in [(21,43),(24,43),(32,55)]:
+            self.assertEqual(result.getpixel(point),outfit.getpixel(point))
+
+    def test_outfit_face_palette_removes_differently_colored_hands(self):
+        base,outfit=fixture()
+        source_skin=(185,125,90,255)
+        outfit.paste(source_skin,(8,2,16,10))
+        outfit.paste(source_skin,(5,14,7,21))
+        outfit.paste(source_skin,(17,14,19,21))
+        result=run(base,outfit)
+        for point in [(5,17),(18,18)]:
+            self.assertEqual(result.getpixel(point),base.getpixel(point))
+        self.assertEqual(result.getpixel((7,17)),outfit.getpixel((7,17)))
+
+    def test_source_hand_outside_base_is_cut_without_moving_the_palm(self):
+        base,outfit=fixture()
+        source_skin=(185,125,90,255)
+        outfit.paste(source_skin,(8,2,16,10))
+        outfit.paste(source_skin,(3,15,7,19))
+        result=run(base,outfit)
+        self.assertEqual(result.getpixel((3,17))[3],0)
+        self.assertEqual(result.getpixel((5,17)),base.getpixel((5,17)))
+
     def test_dark_skin_next_to_cloth_is_not_repainted_as_fabric(self):
         base,outfit=fixture()
         for point in [(6,17),(8,26),(14,27),(14,9)]:

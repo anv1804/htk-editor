@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body class="bg-as-bg text-as-text h-screen overflow-hidden flex flex-col font-sans select-none text-sm">
-  
+
   <header class="h-12 border-b border-as-border bg-[#14171a] flex items-center justify-between px-4 shrink-0 shadow-sm z-30">
     <div class="flex items-center gap-3 font-bold text-[14px] shrink-0">
       <div class="w-7 h-7 rounded bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-slate-950 text-xs font-black shadow-md border border-emerald-400/40">
@@ -31,7 +31,7 @@
   </header>
 
   <main class="flex-1 flex overflow-hidden relative">
-    
+
     <aside id="leftPanel" class="w-80 bg-as-panel border-r border-as-border flex z-10 shrink-0">
       <div class="w-12 flex flex-col items-center bg-[#151719] border-r border-as-border py-2 gap-2 aseprite-vertical-toolbox shrink-0">
         <button class="tool-btn active" data-brush-val="inspect" title="Chỉ xem / Pan (V, H)">🔍</button>
@@ -49,7 +49,7 @@
         <hr class="w-8 border-as-border my-1">
         <button id="btnToolSymmetry" class="tool-btn" title="Vẽ Đối Xứng Trục Dọc (Symmetry X)">🪞</button>
         <button id="btnToolGrid" class="tool-btn" title="Bật/Tắt Lưới Pixel (Grid #)">#️⃣</button>
-        
+
         <div class="mt-auto relative group flex flex-col items-center gap-2 pb-2">
             <select id="brushSize" class="bg-as-subpanel border border-as-border text-xs rounded w-10 text-center custom-select">
                <option value="1">1</option>
@@ -78,7 +78,7 @@
           <option value="unpaint">Bỏ màu tô tay</option>
         </select>
       </div>
-      
+
       <div class="flex-1 flex flex-col p-3 gap-2.5 text-xs overflow-hidden select-none">
         <div class="grid grid-cols-2 gap-2 shrink-0">
           <div class="flex flex-col">
@@ -92,7 +92,7 @@
               <img id="basePreview" alt="Base">
             </div>
           </div>
-          
+
           <div class="flex flex-col">
             <div class="flex justify-between items-center mb-1 text-[10px]">
               <span class="font-bold text-as-muted uppercase">Outfit</span>
@@ -172,7 +172,8 @@
                 <option value="0">Chỉ màu</option>
                 <option value="1">12 màu</option>
                 <option value="2">6 màu</option>
-                <option value="3" selected>Sáng/nền/bóng</option>
+                <option value="3">Giữ sắc độ gốc</option>
+                <option value="4" selected>Phác màu sắc nét</option>
               </select>
             </label>
             <label class="flex flex-col text-as-muted text-[10px]">Dọn cụm rời
@@ -188,7 +189,7 @@
         </div>
       </div>
     </aside>
-    
+
     <div id="leftSplitter" class="w-1 bg-as-border hover:bg-as-accent cursor-col-resize shrink-0 z-20 transition-colors"></div>
 
     <section class="flex-1 flex flex-col relative min-w-0 bg-[#0d0f11]">
@@ -257,7 +258,7 @@
                    </div>
                </div>
            </div>
-           
+
            <!-- Aseprite Pixel Ghost Box Cursor -->
            <div id="pixelCursorBox"></div>
 
@@ -268,6 +269,7 @@
            <div id="canvasCoordHUD">
                <span id="coordBadge">X: --, Y: --</span>
                <span id="coordHexBadge" class="text-teal-400 font-bold">#------</span>
+               <span id="coordLayerBadge" class="layer-audit-badge" data-layer="none">Chưa xử lý</span>
            </div>
         </div>
 
@@ -293,7 +295,7 @@
       </div>
 
       <div id="bottomSplitter" class="h-1 bg-as-border hover:bg-as-accent cursor-row-resize shrink-0 z-20 transition-colors"></div>
-      
+
       <div id="bottomPanel" class="h-44 bg-[#111315] border-t border-as-border flex flex-col shrink-0 z-10">
         <div class="h-7 border-b border-as-border flex items-center px-2 gap-2 bg-[#151719] text-[11px] font-bold">
              Timeline Matrix
@@ -315,7 +317,7 @@
 
     <aside id="rightPanel" class="w-64 bg-as-panel border-l border-as-border flex flex-col z-10 shrink-0 text-xs">
       <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
-        
+
         <div class="border border-as-border bg-[#151719] rounded flex flex-col overflow-hidden">
           <div class="h-6 bg-as-panel border-b border-as-border flex justify-between items-center px-2 font-bold uppercase text-[10px] text-as-muted">
             <span>Preview</span>
@@ -362,7 +364,7 @@
             <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-teal-400 shrink-0"></span><span><b>Cọ màu (B)</b>: Chấm sửa pixel màu chi tiết</span></div>
           </div>
         </div>
-        
+
         <div class="border border-as-border rounded p-3 flex flex-col gap-2 bg-[#151719]">
           <div class="font-bold text-as-muted uppercase text-[10px] mb-1">Profile Landmark</div>
           <div class="flex items-center justify-between mb-1">

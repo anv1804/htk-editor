@@ -81,7 +81,7 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
     skin_expand = int(payload.get("skinExpand", 0))
     threshold = float(payload.get("backgroundThreshold", 36))
     cleanup = int(payload.get('cleanup', 3))
-    paint = int(payload.get('paint', 3))
+    paint = int(payload.get('paint', 4))
     outline = payload.get('outline', True)
     composition = payload.get('composition','layers')
     if not isinstance(outline, bool):
@@ -140,8 +140,10 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         'paletteColors': opaque_colors,
         'mask': encode_png(mask),
         'report': {'version': 6, 'assetVersion': 3, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
+                   'processingRevision': 'source-fabric-veto-bounded-tones-17',
+                   'skinRemoval': 'source-face-palette; source-fabric-veto; bounded-palm-recovery',
                    'composition': composition,
-                   'layerPriority': 'outfit-over-base' if composition == 'layers' else 'pinned-base-palms; clothing-over-forearms',
+                   'layerPriority': 'outfit-over-base' if composition != 'pinned' else 'pinned-base-palms; clothing-over-forearms',
                    'settings': {'rows': rows, 'cols': cols, 'colors': colors, 'outline': outline,
                                 'paint': paint, 'cleanup': cleanup, 'backgroundThreshold': threshold},
                    'frames': frames},
@@ -183,7 +185,7 @@ class RepairHandler(BaseHTTPRequestHandler):
                 self.send_bytes(200, f"{mime}; charset=utf-8", dist_file.read_bytes())
                 return
         if self.path == "/api/health":
-            self.send_bytes(200, "application/json", b'{"ok":true,"version":5}')
+            self.send_bytes(200, "application/json", b'{"ok":true,"version":6}')
             return
         if self.path == '/repair_outfit_ui.js':
             self.send_bytes(200, 'text/javascript; charset=utf-8', (ROOT / 'repair_outfit_ui.js').read_bytes())

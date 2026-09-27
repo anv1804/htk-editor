@@ -1,13 +1,25 @@
 import './style.css';
+import './workspace.css';
+import { setupWorkspace } from './workspace';
+import { setupStudio } from './studio';
+import { setupWorkflow, fillRegion } from './workflow';
+import { setupItemStudio } from './item-studio';
 import { state, corrections, correctionContext, baseMap, baseMapContext, paintLayer, paintContext, profileState, storageKey, setProfileState } from './state';
 import { $, status, readFile, loadImage, download } from './utils';
 import { doRepair, ensureProfile } from './api';
 import { settings, grid, render, checkpoint, remember, invalidate, clearResult, point, dab, stroke, setStroke, getEffectiveBrush, setActiveTool, toggleProfileTarget, currentActiveTool, profileTarget, applyZoom, showTab, currentZoom, doUndo, doRedo, panState, updateContentTransform, toggleSymmetry, togglePixelGrid, toggleOnionSkin, toggleCanvasBackground, fitViewToScreen } from './editor';
-import { renderAnimationTimeline, updateFrameThumbnails, togglePlayPause, isPlaying, stopPlaybackLoop, startPlaybackLoop } from './timeline';
+import { renderAnimationTimeline, updateFrameThumbnails, renderLivePlayerFrame, togglePlayPause, isPlaying, stopPlaybackLoop, startPlaybackLoop } from './timeline';
 import { initSplitter, saveLayout, restoreLayout } from './layout';
 
 // Setup render hook for thumbnails
-(window as any).__onRender = () => { updateFrameThumbnails(); };
+setupStudio();
+setupWorkflow(setSource);
+setupWorkspace();
+setupItemStudio();
+(window as any).__onRender = () => {
+  updateFrameThumbnails();
+  if (!isPlaying) renderLivePlayerFrame(Number(($("frame") as HTMLInputElement).value) || 1);
+};
 
 async function setSource(kind: "base" | "outfit", url: string) {
   if (!url.startsWith("data:")) {
@@ -56,20 +68,80 @@ export function showBrushSizeHUD(size: number) {
   }, 1000);
 }
 
+const layerAuditCanvas = document.createElement("canvas");
+let layerAuditSource: HTMLImageElement | null = null;
+
+function updateLayerAuditBadge(g: ReturnType<typeof grid>, x: number, y: number) {
+  const badge = $("coordLayerBadge");
+  if (!badge) return;
+  if (!state.mask || !g) {
+    badge.textContent = "Chưa xử lý";
+    badge.dataset.layer = "none";
+    return;
+  }
+  if (layerAuditSource !== state.mask) {
+    layerAuditCanvas.width = state.mask.width;
+    layerAuditCanvas.height = state.mask.height;
+    const context = layerAuditCanvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return;
+    context.imageSmoothingEnabled = false;
+    context.drawImage(state.mask, 0, 0);
+    layerAuditSource = state.mask;
+  }
+  const context = layerAuditCanvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return;
+  const [r, green, b, alpha] = context.getImageData(g.x + x, g.y + y, 1, 1).data;
+  let label = "Trong suốt", layer = "empty";
+  if (alpha > 0) {
+    if (r >= 235 && green < 125 && b < 125) { label = "Base lộ ra"; layer = "base"; }
+    else if (r >= 248 && green >= 170 && b < 55) { label = "Tóc / phụ kiện"; layer = "headwear"; }
+    else if (r >= 215 && green >= 145 && b >= 25) { label = "Da dựng"; layer = "skin"; }
+    else if (r >= 140 && green < 140 && b >= 150) { label = "Tô tay"; layer = "paint"; }
+    else if (b >= 190 && green >= 120 && r < 120) { label = "Outfit"; layer = "outfit"; }
+    else { label = "Lớp khác"; layer = "other"; }
+  }
+  badge.textContent = label;
+  badge.dataset.layer = layer;
+}
+
 export function updatePixelCursorBox(e: MouseEvent | PointerEvent) {
   const box = $("pixelCursorBox");
   if (!box) return;
   const targetCanvas = (e.target as HTMLElement).closest("canvas") as HTMLCanvasElement;
-  if (!targetCanvas || currentActiveTool === "inspect" || isPanning) {
+  if (!targetCanvas || isPanning) {
+    box.style.display = "none";
+    document.body.classList.remove("tool-brush-active");
+    return;
+  }
+  const g = grid();
+  if (!g) return;
+  const rect = targetCanvas.getBoundingClientRect();
+  const p = point(e as PointerEvent, targetCanvas);
+  const px = Math.max(0, Math.min(g.w - 1, p.x));
+  const py = Math.max(0, Math.min(g.h - 1, p.y));
+  const coordBadge = $("coordBadge");
+  const coordHexBadge = $("coordHexBadge");
+  if (coordBadge) coordBadge.textContent = `X: ${px}, Y: ${py}`;
+  updateLayerAuditBadge(g, px, py);
+  if (coordHexBadge) {
+    try {
+      const pixel = targetCanvas.getContext("2d")?.getImageData(px, py, 1, 1).data;
+      if (pixel && pixel[3] > 0) {
+        const hex = '#' + [...pixel.slice(0, 3)].map(c => c.toString(16).padStart(2, '0')).join('');
+        coordHexBadge.textContent = hex;
+        coordHexBadge.style.color = hex;
+      } else {
+        coordHexBadge.textContent = "trong suốt";
+        coordHexBadge.style.color = "#9da5ae";
+      }
+    } catch(_) {}
+  }
+  if (currentActiveTool === "inspect") {
     box.style.display = "none";
     document.body.classList.remove("tool-brush-active");
     return;
   }
   document.body.classList.add("tool-brush-active");
-  const g = grid();
-  if (!g) return;
-  const rect = targetCanvas.getBoundingClientRect();
-  const p = point(e as PointerEvent, targetCanvas);
   const size = Number(($("brushSize") as HTMLInputElement)?.value) || 1;
   const half = Math.floor(size / 2);
   const x = Math.max(0, p.x - half);
@@ -112,26 +184,6 @@ export function updatePixelCursorBox(e: MouseEvent | PointerEvent) {
     box.style.borderColor = "#43d17b";
   }
 
-  // Update live coordinates & color HUD
-  const coordBadge = $("coordBadge");
-  const coordHexBadge = $("coordHexBadge");
-  if (coordBadge) coordBadge.textContent = `X: ${p.x}, Y: ${p.y}`;
-  if (coordHexBadge) {
-    try {
-      const ctx = targetCanvas.getContext("2d");
-      if (ctx) {
-        const pixel = ctx.getImageData(p.x, p.y, 1, 1).data;
-        if (pixel[3] > 0) {
-          const hex = '#' + [...pixel.slice(0, 3)].map(c => c.toString(16).padStart(2, '0')).join('');
-          coordHexBadge.textContent = hex;
-          coordHexBadge.style.color = hex;
-        } else {
-          coordHexBadge.textContent = "trong suốt";
-          coordHexBadge.style.color = "#9da5ae";
-        }
-      }
-    } catch(_) {}
-  }
 }
 
 // Pan and Interaction State
@@ -218,6 +270,7 @@ for (const canvasId of ["baseCanvas", "outfitCanvas", "editCanvas"]) {
       render(); return;
     }
     
+    if (mode === 'fill') { fillRegion(canvas, p.x, p.y); return; }
     const layer = isProfile ? baseMap : ["color", "unpaint"].includes(mode) ? paintLayer : corrections;
     const extraLayers = isProfile ? [] : [corrections, paintLayer].filter(l => l !== layer);
     checkpoint(layer, g, extraLayers);
@@ -256,6 +309,8 @@ for (const canvasId of ["baseCanvas", "outfitCanvas", "editCanvas"]) {
     if (coordBadge) coordBadge.textContent = "X: --, Y: --";
     const coordHexBadge = $("coordHexBadge");
     if (coordHexBadge) { coordHexBadge.textContent = "#------"; coordHexBadge.style.color = "#9da5ae"; }
+    const layerBadge = $("coordLayerBadge");
+    if (layerBadge) { layerBadge.textContent = "Chưa xử lý"; layerBadge.dataset.layer = "none"; }
   });
   
   for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
@@ -433,10 +488,11 @@ if (repairEl) repairEl.onclick = async () => {
     if (!response.ok) throw new Error(result.error || "Không xử lý được ảnh.");
     if (!result.report?.composition) throw new Error("Server chưa cập nhật chế độ ghép lớp. Khởi động lại server.");
     if ((result.report?.version || 0) < 6) throw new Error("Server chưa cập nhật v3. Khởi động lại tools/repair_outfit_ui.py.");
-    const [image, mask] = await Promise.all([loadImage(result.image), loadImage(result.mask)]);
+    const [image, mask, outfitImage] = await Promise.all([loadImage(result.image), loadImage(result.mask), result.outfitLayer ? loadImage(result.outfitLayer) : Promise.resolve(null)]);
     if (revision !== state.revision) return status("Thiết lập đã đổi trong khi xử lý. Bấm Xử lý sprite để cập nhật.");
     state.result = image; state.mask = mask; state.report = result.report;
     state.outfitLayer = result.outfitLayer;
+    state.outfitLayerImage = outfitImage;
     state.headwearLayer = result.headwearLayer;
     ($("split") as HTMLButtonElement).disabled = !result.headwearLayer;
     ($("downloadHeadwear") as HTMLButtonElement).disabled = true;
@@ -446,7 +502,7 @@ if (repairEl) repairEl.onclick = async () => {
     $("resultStage").classList.add("loaded");
     $("resultMeta").textContent = `${result.width} × ${result.height} · ${result.frameCount} frame · ${result.paletteColors} màu`;
     ($("download") as HTMLButtonElement).disabled = ($("downloadReport") as HTMLButtonElement).disabled = false;
-    status(`Hoàn tất: ${result.paletteColors} màu. ${result.report!.composition === 'layers' ? 'Outfit ở trên base; vùng da đã cắt để lộ base bên dưới.' : 'Đang dùng profile đầu/tay cố định.'}`);
+    status(`Hoàn tất: ${result.paletteColors} màu. ${result.report!.composition !== 'pinned' ? 'Outfit ở trên base; kiểm tra mask và tô sửa vùng cần thiết.' : 'Đang dùng profile đầu/tay cố định.'}`);
     remember();
   } catch (error: any) {
     status(error instanceof TypeError ? "Không kết nối được server. Chạy tools/repair_outfit_ui.py rồi mở http://127.0.0.1:8765/." : error.message, true);
@@ -681,6 +737,7 @@ window.addEventListener("keydown", (e) => {
     else setActiveTool("erase");                    // Eraser (tẩy pixel thành trong suốt)
   }
   else if (key === "I") setActiveTool("sample");   // Eyedropper (hút màu)
+  else if (key === "G") setActiveTool("fill");
   else if (key === "V" || key === "H") setActiveTool("inspect"); // Move / Hand (pan)
   else if (key === "R") setActiveTool("base");      // Lộ Base
   else if (key === "U") setActiveTool("outfit");    // Giữ outfit
@@ -920,7 +977,14 @@ $("showProfile")?.addEventListener("change", saveLayout);
         const el = $(id) as any;
         if (id === "outline") el.checked = saved.values[id]; else el.value = saved.values[id];
       }
-      if (saved.version !== 4) ($("paint") as HTMLInputElement).value = "3";
+      if (!saved.version || saved.version < 5) {
+        ($("paint") as HTMLInputElement).value = "3";
+        ($("composition") as HTMLSelectElement).value = "cutout";
+        ($("outline") as HTMLInputElement).checked = false;
+        ($("cleanup") as HTMLInputElement).value = "0";
+      }
+      // Restore the user's paint and outline settings verbatim. Loading an
+      // existing project must not silently enable a stronger finishing pass.
       if (saved.base) await setSource("base", saved.base);
       if (saved.outfit) await setSource("outfit", saved.outfit);
       if (saved.corrections && state.base) {
@@ -949,4 +1013,6 @@ $("showProfile")?.addEventListener("change", saveLayout);
   renderAnimationTimeline();
   setTimeout(renderAnimationTimeline, 250);
   render();
+  fitViewToScreen();
+  document.dispatchEvent(new Event('studio-ready'));
 })();

@@ -78,7 +78,7 @@ export function renderAnimationTimeline() {
 }
 
 export function updateFrameThumbnails() {
-  const srcImg = state.result || state.outfit || state.base;
+  const srcImg = (document.body.dataset.view === 'layer' ? state.outfitLayerImage : state.result) || state.outfit || state.base;
   if (!srcImg) return;
   const cols = Number(($("cols") as HTMLInputElement)?.value) || 4;
   const rows = Number(($("rows") as HTMLInputElement)?.value) || 7;
@@ -105,7 +105,7 @@ export function updateFrameThumbnails() {
 export function renderLivePlayerFrame(frameNumber: number) {
   const animPreviewCanvas = $("animPreviewCanvas") as HTMLCanvasElement;
   if (!animPreviewCanvas) return;
-  const srcImg = state.result || state.outfit || state.base;
+  const srcImg = (document.body.dataset.view === 'layer' ? state.outfitLayerImage : state.result) || state.outfit || state.base;
   if (!srcImg) return;
   const cols = Number(($("cols") as HTMLInputElement)?.value) || 4;
   const rows = Number(($("rows") as HTMLInputElement)?.value) || 7;

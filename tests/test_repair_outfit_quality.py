@@ -313,7 +313,7 @@ class PinnedBaseAndPaintTests(unittest.TestCase):
         pixels = np.asarray(result)
         self.assertTrue(np.array_equal(pixels[:,:,3],np.asarray(outfit)[:,:,3]))
         colors = np.unique(pixels[pixels[:,:,3]>0,:3],axis=0)
-        self.assertLessEqual(len(colors),6)
+        self.assertLessEqual(len(colors),16)
         self.assertGreater(float(np.ptp(luminance(colors))),40)
 
     def test_invalid_profile_and_paint_dimensions_are_rejected(self):

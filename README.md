@@ -83,6 +83,13 @@ Run the browser interface with:
 python3 tools/repair_outfit_ui.py
 ```
 
+The **Xưởng item** button (`Alt+J`) opens an independent pixel workbench for
+accessories and handheld weapons. Import/crop an image, remove connected
+background, reduce colors, draw pixels, set a grip anchor, and preview placement
+on the active character frame. Export transparent PNG or save a portable item
+project. Applying to the outfit is explicit and undoable. See the
+[item workbench guide](docs/item-workbench.md) for controls and limitations.
+
 The tool opens `http://127.0.0.1:8765`. Drop the clean base sheet and outfit
 sheet into the two input areas, adjust the grid if needed, then process and
 download the repaired transparent PNG.
@@ -136,12 +143,12 @@ is also supported); `--free-skin` selects the older outfit-guided behavior.
 The Python `repair_sheet` API retains its old default for compatibility; pass
 `lock_base=True` or `base_profile=...` to use fixed anatomy.
 
-`--paint 3` (the new UI/CLI default) separates two fabric color families and
-repaints shadow, midtone and highlight regions with shared ramps. It preserves
-the silhouette and uses source lighting rather than inventing new folds.
-Connected dark belt, cuff and fold lines are preserved before recoloring.
-Tone levels follow the source light distribution, so nearly flat fabric does
-not gain exaggerated shadow patches and cream/blue shades retain their hue.
+`--paint 3` (the UI/CLI default) fits a shared palette to the actual outfit
+colors, using the available budget after reserving base and manually painted
+colors. It does not assume two materials or cap fabric at six shades. Gentle
+local noise cleanup preserves connected strokes; source folds keep their
+colors instead of being converted into black ink. No dithering or artificial
+contrast is added. Recoloring does not change alpha or the selected skin mask.
 Other paint modes remain available. The UI also has direct color painting,
 an eyedropper that ignores mask overlays, and a separate PNG retouch layer
 (`--retouch outfit-retouch.png`). Hand-painted colors are locked during

@@ -102,9 +102,11 @@ export function fitViewToScreen() {
       const availH = tabEl.clientHeight - 100;
       // 3 viewports: each has (64 * zoom + padding/borders ~ 16px) + gap 24px
       // at 1x zoom: 3 * (64 + 16) + 48 = 288px width, 64 + 40 = 104px height
-      const zoomW = Math.floor((availW / 288) * 2) / 2;
-      const zoomH = Math.floor((availH / 104) * 2) / 2;
-      const bestZoom = Math.min(5.0, Math.max(2.0, Math.min(zoomW, zoomH)));
+        const g = grid();
+        const count = document.body.dataset.view && document.body.dataset.view !== 'compare' ? 1 : document.body.classList.contains('atelier') && !document.body.classList.contains('show-base-reference') ? 2 : 3;
+        const zoomW = (availW - (count === 3 ? 108 : 16)) / (count * (g?.w || 64));
+        const zoomH = (availH - 40) / (g?.h || 64);
+        const bestZoom = Math.max(0.5, Math.floor(Math.min(8, zoomW, zoomH) * 2) / 2);
       applyZoom(bestZoom, "inspector");
     } else {
       applyZoom(4.0, "inspector");
@@ -169,19 +171,9 @@ export function render() {
   
   const outfitCanvas = $("outfitCanvas") as HTMLCanvasElement;
   const outfitContext = drawCrop(outfitCanvas, state.outfit, g);
-  const ctx = drawCrop($("editCanvas") as HTMLCanvasElement, state.result || state.outfit, g);
-  if (!state.result && state.outfit && g) {
-    const imgData = ctx.getImageData(0, 0, g.w, g.h);
-    const thresh = Number(($("threshold") as HTMLInputElement)?.value) || 30;
-    const cutoff = Math.max(180, 255 - thresh);
-    const d = imgData.data;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i] >= cutoff && d[i+1] >= cutoff && d[i+2] >= cutoff) {
-        d[i+3] = 0;
-      }
-    }
-    ctx.putImageData(imgData, 0, 0);
-  }
+  const layerView = document.body.dataset.view === 'layer';
+  const ctx = drawCrop($("editCanvas") as HTMLCanvasElement, layerView ? state.outfitLayerImage || null : state.result, g);
+  $("editCanvas").closest('.viewport-card')?.classList.toggle('awaiting-result', !state.result);
   
   if (g) {
     const labels = correctionContext.getImageData(g.x, g.y, g.w, g.h).data;
@@ -200,14 +192,15 @@ export function render() {
       if (labels[i+3] >= 128) {
         // Red: Base reveal (cắt da để lộ base)
         if (labels[i] > 200 && labels[i+1] < 100 && labels[i+2] < 100) {
-          preview.data.set(basePixels.slice(i, i+4), i);
+          if (layerView) preview.data.fill(0, i, i+4);
+          else preview.data.set(basePixels.slice(i, i+4), i);
         }
         // Green: Erase (xóa thành trong suốt)
         else if (labels[i+1] > 200 && labels[i] < 100 && labels[i+2] < 100) {
           preview.data.fill(0, i, i+4);
         }
         // Blue: Keep outfit (giữ nguyên outfit/dải lụa, không cắt da)
-        else if (labels[i+2] > 200 && labels[i] < 100 && labels[i+1] < 100) {
+        else if (labels[i+2] > 200 && labels[i] < 100) {
           preview.data.set(outfitPixels.slice(i, i+4), i);
         }
         // Yellow: Keep headwear (giữ tóc & phụ kiện đầu)
@@ -220,7 +213,7 @@ export function render() {
     ctx.drawImage(paintLayer, g.x, g.y, g.w, g.h, 0, 0, g.w, g.h);
 
     if (isOnionSkinEnabled && g && (state.result || state.outfit)) {
-      const srcImg = state.result || state.outfit;
+      const srcImg = layerView ? state.outfitLayerImage : state.result || state.outfit;
       if (g.frame > 0 && srcImg) {
         const prevX = ((g.frame - 1) % g.cols) * g.w;
         const prevY = Math.floor((g.frame - 1) / g.cols) * g.h;
@@ -327,7 +320,7 @@ export function doRedo() {
 export function remember() {
   try {
     const values = Object.fromEntries(settings.map(id => [id, id === "outline" ? ($<HTMLInputElement>(id)).checked : ($<HTMLInputElement>(id)).value]));
-    sessionStorage.setItem(storageKey, JSON.stringify({ version: 4, values, base: state.base?.src, outfit: state.outfit?.src,
+    sessionStorage.setItem(storageKey, JSON.stringify({ version: 9, values, base: state.base?.src, outfit: state.outfit?.src,
       corrections: state.base ? corrections.toDataURL() : null }));
   } catch (_) { }
   try {
@@ -349,6 +342,8 @@ export function invalidate(message = "Thiết lập đã đổi. Bấm Xử lý 
 
 export function clearResult() {
   state.result = state.mask = state.report = null;
+  state.outfitLayerImage = null;
+  state.outfitLayer = state.headwearLayer = undefined;
   $("resultStage").classList.remove("loaded");
   $("resultPreview").removeAttribute("src");
   $("resultMeta").textContent = "";

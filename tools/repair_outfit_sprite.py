@@ -534,7 +534,12 @@ def warm_material_mask(base, base_fg, rgb, fg):
     if len(hy):
         yy = np.indices(fg.shape)[0]
         body = fg & (yy > hy.max())
-        if np.count_nonzero(material & body) > max(12, body.sum()*.25):
+        # Cream trim plus blue sleeves is not a uniformly tan suit. Expanding
+        # protection across that whole body also protects its skin-colored
+        # fists, leaving them to be recolored as beige cloth.
+        cool = (g > r+8) | (b > r+8)
+        mostly_warm = np.count_nonzero(cool & body) < body.sum()*.12
+        if mostly_warm and np.count_nonzero(material & body) > max(12, body.sum()*.25):
             # A predominantly tan suit is ambiguous, not bare anatomy. Keep
             # it unless a bright flesh pixel also agrees with the base.
             distance = np.linalg.norm(rgb.astype(float)-base[:,:,:3], axis=2)
@@ -630,8 +635,267 @@ def headwear_mask(base, outfit, threshold=36, cleanup=3):
     return fill_holes(result) & fg
 
 
+def outfit_skin_openings(rgb, fg, base, base_fg, protected):
+    """Learn flesh colors from the outfit face before cutting its hands/feet.
+
+    The base supplies pose proximity only; its palette must not decide whether
+    a differently shaded source hand survives as a piece of clothing.
+    """
+    head = base_head_mask(base, base_fg)
+    rgba = np.dstack((rgb, fg.astype(np.uint8)*255))
+    flesh = skin_mask(rgba, fg) & ~protected
+    samples = flesh & head & ~boundary(head)
+    if np.count_nonzero(samples) < 4:
+        return np.zeros_like(fg)
+    palette = np.unique(rgb[samples], axis=0)
+    candidates = flesh & dilate(base_fg, 5)
+    matched = np.zeros_like(fg)
+    colors = rgb[candidates].astype(np.float32)
+    nearest = nearest_colors(colors, palette)
+    matched[candidates] = np.linalg.norm(colors-palette[nearest],axis=1) < 38
+    result = np.zeros_like(fg)
+    for points in components(matched):
+        region = group_mask(fg.shape, points)
+        if len(points) >= 2 and np.any(region & dilate(skin_mask(base,base_fg),3)):
+            result |= region
+    # Follow warm shadow pixels only one step from confirmed flesh. Never
+    # flood a brown belt or widen the cut through a colored cuff.
+    r,g,b = rgb.astype(np.int32).transpose(2,0,1)
+    shadow = fg & ~protected & (r > g+12) & (g > b+3) & (luminance(rgb) > 45)
+    neighbor_count = sum(shift(result,dy,dx).astype(np.uint8)
+                         for dy,dx in ((0,1),(0,-1),(1,0),(-1,0)))
+    result |= shadow & (neighbor_count >= 3)
+    return result
+
+
+def mask_distance(seeds, allowed, limit=4):
+    """Short geodesic distance inside the source silhouette, within one frame."""
+    distance=np.full(allowed.shape,limit+1,np.int16)
+    frontier=seeds & allowed
+    distance[frontier]=0
+    for step in range(1,limit+1):
+        frontier=dilate(frontier,1) & allowed & (distance > step)
+        distance[frontier]=step
+    return distance
+
+
+def collar_material_mask(rgb, fg, head, cloth):
+    """Protect cream collar continuations before applying skin cutouts.
+
+    Warm highlights are ambiguous by color alone. Require connection to the
+    source cloth and a position beside/below the chin, never the central face.
+    """
+    result = np.zeros_like(fg)
+    hy, hx = np.nonzero(head)
+    if not len(hy):
+        return result
+    yy, xx = np.indices(fg.shape)
+    width = int(np.ptp(hx))+1
+    bottom, center = int(hy.max()), (hx.min()+hx.max())/2
+    band = (yy >= bottom-2) & (yy <= bottom+max(4, round(width*.35)))
+    band &= (abs(xx-center) <= width*.7)
+    band &= (abs(xx-center) > width*.18) | (yy > bottom+1)
+    r,g,b = rgb.astype(np.int32).transpose(2,0,1)
+    cream = (r-g <= 30) & (g-b >= 10) & (r-b <= 85) & (luminance(rgb) > 130)
+    cream &= (r-g) <= (g-b)*1.1
+    eligible = fg & band & cream
+    result = eligible & cloth
+    for _ in range(3):
+        result |= eligible & dilate(result,1)
+    return result
+
+
+def source_material_evidence(rgb, fg, head, cloth):
+    """Compare source flesh AND source fabric before allowing a body cut.
+
+    The base determines pose, not the color of clothing. Relative evidence
+    prevents cream cloth shadows near base skin colors being punched out.
+    Ambiguous pixels attached to source fabric stay fabric for manual review.
+    """
+    result = np.zeros_like(fg)
+    hy = np.nonzero(head)[0]
+    if not len(hy):
+        return result
+    yy = np.indices(fg.shape)[0]
+    rgba = np.dstack((rgb, fg.astype(np.uint8)*255))
+    flesh = skin_mask(rgba, fg)
+    r,g,b = rgb.astype(np.int32).transpose(2,0,1)
+    # Include the source jaw's brown shadow, not only bright cheek colors.
+    # Otherwise that shadow is closer to fabric and survives as a neck stripe.
+    face_samples = fg & head & ~boundary(head) & (r > g+12) & (g > b+4)
+    face_samples &= luminance(rgb) > 45
+    cloth_samples = cloth & ~flesh & (yy >= hy.max()-1) & (luminance(rgb) > 90)
+    if face_samples.sum() < 4 or cloth_samples.sum() < 4:
+        return result
+    face_palette = np.unique(rgb[face_samples], axis=0)
+    cloth_palette = np.unique(rgb[cloth_samples], axis=0)
+    # Restrict comparison to the chin/body. Source eyes and scalp fringes
+    # must never be retained merely because they share a fabric color.
+    candidates = fg & (yy >= hy.max()-1)
+    values = rgb[candidates].astype(np.float32)
+    ds = np.linalg.norm(values-face_palette[nearest_colors(values,face_palette)],axis=1)
+    dc = np.linalg.norm(values-cloth_palette[nearest_colors(values,cloth_palette)],axis=1)
+    plausible = np.zeros_like(fg)
+    plausible[candidates] = (dc <= ds+6) & (dc < 65)
+    result = cloth_samples.copy()
+    for _ in range(5):
+        result |= plausible & dilate(result,1)
+    # Existing cool cloth already has its own protection. This classifier is
+    # only a veto for warm pixels otherwise mistaken for skin; do not grow new
+    # protection across neutral outlines of bare feet or hands.
+    return result & fg & flesh
+
+
+def source_palm_apertures(rgb, fg, base, base_fg):
+    """Recover flesh and red/brown hand rims without exposing the forearm."""
+    head, palms = base_landmarks(base, base_fg)
+    r,g,b = rgb.astype(np.int32).transpose(2,0,1)
+    ratio = (r-g)/np.maximum(g-b,1)
+    flesh = skin_mask(np.dstack((rgb,fg.astype(np.uint8)*255)),fg)
+    face = flesh & head & ~boundary(head)
+    if face.sum() < 4:
+        return np.zeros_like(fg)
+    cutoff = max(1.15,float(np.percentile(ratio[face],25)))
+    # Do not grow a palm through its cuff. The ordinary source-skin pass
+    # handles skin outside base; this recovery step is restricted to the palm.
+    zone = palms & ~head
+    seeds = flesh & zone & (ratio >= cutoff)
+    palette = np.unique(rgb[face],axis=0)
+    values = rgb[seeds].astype(np.float32)
+    if len(values):
+        matched = np.linalg.norm(values-palette[nearest_colors(values,palette)],axis=1) <= 30
+        seeds[seeds] = matched
+    result = np.zeros_like(fg)
+    for points in components(seeds):
+        area = group_mask(fg.shape,points)
+        if len(points) >= 2 and np.any(area & palms):
+            result |= area
+    red_rim = fg & zone & (luminance(rgb) < 115) & (r > g+5)
+    red_rim &= ratio >= cutoff
+    return result | (dilate(result,1) & red_rim)
+
+
+def refine_bare_foot_edges(rgb, fg, base_fg, base_skin, removed, material, protected, head):
+    """Assign neutral toe/heel fringes to nearby exposed skin or fabric.
+
+    Only a narrow exterior band of an already exposed foot is eligible. Boots
+    and hems have material anchors; a covered foot has no skin seed at all.
+    """
+    hy=np.nonzero(head)[0]; by=np.nonzero(base_fg)[0]
+    if not len(hy) or not len(by):
+        return removed
+    yy=np.indices(fg.shape)[0]
+    lower=yy > hy.max()+(by.max()-hy.max())*.55
+    exposed=removed & base_skin & lower
+    if not exposed.any():
+        return removed
+    light=luminance(rgb)
+    saturation=np.ptp(rgb.astype(np.int16),axis=2)
+    anchors=material & ~removed & (saturation > 28)
+    # A few bright matte pixels around an old foot are not a white garment.
+    # Require a connected neutral panel before using it as a fabric anchor.
+    for points in components(material & ~removed & (saturation <= 28) & (light > 155)):
+        if len(points) >= 9:
+            anchors |= group_mask(fg.shape,points)
+    allowed=fg & ~protected
+    skin_distance=mask_distance(exposed,allowed,4)
+    cloth_distance=mask_distance(anchors,allowed,4)
+    neutral=saturation <= 45
+    band=lower & ~base_fg & dilate(base_fg,2)
+    discard=band & allowed & neutral & (skin_distance <= 3) & (skin_distance < cloth_distance)
+    return removed | discard
+
+
+def iterative_skin_residue(rgb, fg, base_skin, seed, removed, protected,
+                           skin_palette, cloth_palette, *, max_passes=8):
+    """Peel only connected, skin-like residue from a cutout, to a fixed point.
+
+    Each pass adds at most one pixel of geodesic reach. A pixel must be near
+    base skin, match the outfit sheet's learned face chroma better than its
+    learned cloth chroma, and remain unprotected by collar/cuff evidence.
+    The pass limit is deliberately small; empty frontiers stop immediately.
+    """
+    if skin_palette is None or cloth_palette is None or len(skin_palette) < 4 or len(cloth_palette) < 4:
+        return np.zeros_like(fg)
+    allowed = fg & dilate(base_skin, 3) & ~removed & ~protected
+    if not np.any(allowed) or not np.any(seed):
+        return np.zeros_like(fg)
+
+    values = rgb[allowed].astype(np.float32)
+    colors = values.astype(np.int32)
+    r, g, b = colors.T
+    ratios = (r-g) / np.maximum(g-b, 1)
+    source_skin = np.asarray(skin_palette, dtype=np.float32)
+    face_ratio = (source_skin[:, 0]-source_skin[:, 1]) / np.maximum(source_skin[:, 1]-source_skin[:, 2], 1)
+    ratio_floor = max(.95, float(np.percentile(face_ratio, 15))*.68)
+    warm = (r > g+5) & (g > b+1) & (r >= 38) & (ratios >= ratio_floor)
+
+    def normalized_palette_distance(colors, palette):
+        reference = palette / np.maximum(palette.sum(axis=1, keepdims=True), 1)
+        distances = np.empty(len(colors), dtype=np.float32)
+        # Process large frames in bounded chunks so memory use stays predictable.
+        for start in range(0, len(colors), 4096):
+            stop = min(len(colors), start+4096)
+            chunk = colors[start:stop]
+            normalized = chunk / np.maximum(chunk.sum(axis=1, keepdims=True), 1)
+            distances[start:stop] = np.sqrt(
+                ((normalized[:, None, :] - reference[None, :, :]) ** 2).sum(axis=2)
+            ).min(axis=1)
+        return distances
+
+    face_distance = normalized_palette_distance(values, source_skin)
+    cloth_distance = normalized_palette_distance(values, np.asarray(cloth_palette, dtype=np.float32))
+    # Ambiguous cream highlights and warm embroidery have no clear skin-over-
+    # cloth margin, so they stay in the garment for manual review.
+    classified = warm & (face_distance <= .105) & ((cloth_distance-face_distance) >= .018)
+    candidate = np.zeros_like(fg)
+    candidate[allowed] = classified
+
+    reached = seed.copy()
+    result = np.zeros_like(fg)
+    for _ in range(max_passes):
+        frontier = candidate & dilate(reached, 1) & ~reached
+        if not np.any(frontier):
+            break
+        result |= frontier
+        reached |= frontier
+    return result
+
+
+def learn_sheet_material_palettes(base, outfit, *, rows, cols, threshold, cleanup):
+    """Learn shared face and fabric colors from every aligned sheet frame."""
+    cw, ch = base.width//cols, base.height//rows
+    skin_samples, cloth_samples = [], []
+    for row in range(rows):
+        for col in range(cols):
+            box = (col*cw, row*ch, (col+1)*cw, (row+1)*ch)
+            b = np.asarray(base.crop(box).convert('RGBA'))
+            o = np.asarray(outfit.crop(box).convert('RGBA'))
+            base_fg = foreground_mask(b, threshold)
+            rgb, fg, _ = clean_outfit(o, threshold, cleanup)
+            head = base_head_mask(b, base_fg)
+            rgba = np.dstack((rgb, fg.astype(np.uint8)*255))
+            flesh = skin_mask(rgba, fg)
+            face = flesh & head & ~boundary(head)
+            if np.count_nonzero(face) >= 4:
+                skin_samples.append(rgb[face])
+            regions = occlusion_regions(b, base_fg, rgba, fg)
+            cloth = regions['cloth'] & ~flesh & (luminance(rgb) > 35)
+            if np.count_nonzero(cloth) >= 4:
+                cloth_samples.append(rgb[cloth])
+    skin = np.unique(np.concatenate(skin_samples, axis=0), axis=0) if skin_samples else None
+    cloth = np.unique(np.concatenate(cloth_samples, axis=0), axis=0) if cloth_samples else None
+    # Keep per-frame comparisons bounded even for large, unusually varied sheets.
+    if skin is not None and len(skin) > 256:
+        skin = skin[np.linspace(0, len(skin)-1, 256, dtype=np.int32)]
+    if cloth is not None and len(cloth) > 256:
+        cloth = cloth[np.linspace(0, len(cloth)-1, 256, dtype=np.int32)]
+    return skin, cloth
+
+
 def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
-                          cleanup=3, overrides=None, profile=None, headwear=None):
+                          cleanup=3, overrides=None, profile=None, headwear=None, conservative=False,
+                          sheet_skin_palette=None, sheet_cloth_palette=None):
     """Base underneath a cut-out outfit. Fabric always occludes the base."""
     b,o = np.asarray(base.convert('RGBA')),np.asarray(outfit.convert('RGBA'))
     base_fg = foreground_mask(b,background_threshold)
@@ -642,6 +906,7 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     candidate = skin_mask(cleaned,fg)
     protected_material = (warm_material_mask(b, base_fg, rgb, fg)
                           if headwear is not None else np.zeros_like(fg))
+    collar = collar_material_mask(rgb,fg,regions['head'],regions['cloth'])
     tan_material = bool(protected_material.sum() >= max(24, int(fg.sum()*.2)))
     if tan_material:
         # On warm/tan outfits the torso and trouser panels can match the base
@@ -653,9 +918,39 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
         if len(core_y):
             core_width = int(np.ptp(core_x))+1
             center = (core_x.min()+core_x.max())/2
-            torso_start = int(core_y.min()+max(8, round(core_width*.8)))
+            # Clothing protection begins below the chin, never inside the
+            # source face. A height estimated from head width retained jaws.
+            torso_start = int(core_y.max())+1
             core = (body_y >= torso_start) & (abs(body_x-center) <= core_width*.62)
             protected_material |= fg & base_fg & core
+    structural_protection = protected_material.copy()
+    candidate &= ~protected_material
+    protected_material |= collar
+    cuff_material = np.zeros_like(fg)
+    if conservative:
+        # A cuff's shaded green/blue material can be almost black. The later
+        # rim cleanup must not treat these low-luminance cloth pixels as skin
+        # outline merely because they border an exposed hand.
+        head, palms = base_landmarks(b,base_fg)
+        cr,cg,cb = rgb.astype(np.int32).transpose(2,0,1)
+        olive = (cg-cb >= 8) & (cr-cg <= (cg-cb)*.95)
+        cool = (cb >= cr+6) | ((cg >= cr+6) & (cg >= cb))
+        cuff_material = fg & dilate(palms,5) & ~head & (olive | cool)
+        protected_material |= cuff_material
+        material_evidence = source_material_evidence(rgb,fg,regions['head'],regions['cloth'])
+        # Base skin describes the body UNDER the outfit, not exposed skin in
+        # the source. It must never override source fabric evidence. Rebuild
+        # the apertures after the veto so false cloth seeds cannot drive the
+        # later shadow/rim expansion into adjacent folds. The separate palm
+        # pass recovers actual hands using source face chroma and palm geometry.
+        protected_material |= material_evidence
+        source_skin = outfit_skin_openings(
+            rgb,fg,b,base_fg,
+            protected_material | (headwear if headwear is not None else False))
+    else:
+        source_skin = outfit_skin_openings(
+            rgb,fg,b,base_fg,protected_material | (headwear if headwear is not None else False))
+    candidate &= ~collar
     candidate &= ~protected_material
     palette = np.unique(b[:,:,:3][base_skin],axis=0)
     flesh_samples = b[:,:,:3][base_skin & (luminance(b[:,:,:3]) > 150)].astype(np.float32)
@@ -679,13 +974,20 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
         if not tan_material:
             tolerance[:] = 65
         skin[candidate] = distance <= tolerance[candidate]
+    if conservative:
+        # Base palette similarity alone is not evidence that outfit is skin.
+        # Only extend an aperture confirmed from the source face palette.
+        skin &= dilate(source_skin,1)
     # Look for skin openings anywhere, including bare feet. Match to base
     # flesh spatially, so a warm ornament away from the body stays clothing.
-    removable = np.zeros(fg.shape,bool)
+    removable = source_skin.copy()
     for points in components(skin):
         area = group_mask(fg.shape,points)
         if np.any(area & dilate(base_skin,5)):
-            removable |= fill_holes(area) & fg
+            # An enclosed colored pixel may be a cuff, collar or embroidery,
+            # not skin. Hole filling here punched holes through real fabric.
+            # Face interiors are handled separately by the head-specific mask.
+            removable |= area
     # Replace warm generated face pixels against the base head footprint. The
     # loose color test handles one-pixel head shifts and shaded skin while
     # confident cloth colors remain on top.
@@ -698,6 +1000,10 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
         face_tone &= source_ratio >= max(1.1, flesh_ratio*.92)
     neutral_fringe = head_area & (np.max(rgb,axis=2).astype(np.int16)-np.min(rgb,axis=2).astype(np.int16) <= 42)
     neutral_fringe &= (luminance(rgb) >= 55) & (luminance(rgb) <= 245)
+    if conservative and np.any(base_head):
+        # A neutral pixel below the chin may be ivory collar fabric. Do not
+        # let the broad face-fringe rule cut it merely for lacking saturation.
+        neutral_fringe &= np.indices(fg.shape)[0] < np.nonzero(base_head)[0].max()-1
     base_ink = (luminance(b[:,:,:3]) < 100) & (np.linalg.norm(rgb.astype(np.float32)-b[:,:,:3],axis=2) < 65)
     removable |= face_tone | neutral_fringe | (head_zone & base_ink)
     # Skin shadows can be darker than skin_mask's brightness cutoff. Do not
@@ -709,11 +1015,18 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     warm_shadow &= base_fg & (luminance(b[:,:,:3]) < 155) & (skin_distance < 50)
     for _ in range(2):
         removable |= dilate(removable,1) & warm_shadow
-    dark = luminance(rgb) < 110
+    # Dark green/blue embroidery is still material, not the rim of a fist.
+    colored_material = ((g > r+8) & (g > blue+8)) | ((blue > r+8) & (blue > g+4))
+    dark = (luminance(rgb) < 110) & ~colored_material
     # Remove old skin outlines only next to the detected aperture, keeping
     # dark seams attached to the surrounding garment.
     rim = dilate(removable,1) & dark & fg & ~regions['cloth']
-    removed = removable | rim | (regions['removed'] & dilate(regions['head'],2))
+    legacy_face_cut = regions['removed'] & dilate(regions['head'],2)
+    if conservative:
+        # Neck/hand openings already have source-color evidence above. The
+        # legacy chroma rule is too broad for warm white collar highlights.
+        legacy_face_cut &= base_head
+    removed = removable | rim | legacy_face_cut
     # Keep the original anatomy's dark edge where both layers agree on its
     # color. This restores complete skin contours without cutting green/blue
     # sleeves or inventing a limb outside the base.
@@ -731,10 +1044,14 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
     offsets = [(dy,dx) for dy in (-1,0,1) for dx in (-1,0,1) if dy or dx]
     skin_support = sum(shift(removed,dy,dx).astype(np.uint8) for dy,dx in offsets)
     cloth_support = sum(shift(material,dy,dx).astype(np.uint8) for dy,dx in offsets)
+    # The old fist's dark rim belongs to its cutout unless it also borders
+    # cloth. Preserve that shared cuff seam; discard free-standing skin rims.
+    removed |= fg & dark & dilate(source_skin,1) & ~material & (cloth_support == 0)
     # Snap ambiguous dark fringes to the base only where skin surrounds them.
     # Colored sleeves and cuffs provide material support and remain in place.
     fringe = fg & dark & ~material & (skin_support >= 3) & (cloth_support <= 1)
     removed |= fringe & (~base_fg | boundary(base_fg))
+    aperture_removed = removed.copy()
     # Read every gap in the lower silhouette, including off-center running
     # poses. Confirm bare openings on both sides so long robes remain intact.
     hy,hx = np.nonzero(base_head)
@@ -756,7 +1073,15 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
                 left_open |= bool(near[y,xs.min()-1])
                 right_open |= bool(near[y,xs.max()+1])
             if left_open and right_open:
-                removed |= group_mask(fg.shape,points) & fg
+                # Bare feet on both sides do not prove that the entire middle
+                # is empty: a long robe/ribbon may extend to the foot line.
+                # A short bridge near the crotch is a different shape.
+                region=group_mask(fg.shape,points)
+                keep=np.zeros_like(fg)
+                for cloth_points in components(region & material):
+                    if cloth_points[:,0].max() >= int(by.max())-2:
+                        keep |= group_mask(fg.shape,cloth_points)
+                removed |= region & fg & ~dilate(keep,1)
     if headwear is not None:
         # Snap only ambiguous edge pixels near an already exposed foot.
         # A material neighborhood veto protects boots, hems and trouser legs.
@@ -767,6 +1092,26 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
             fringe = dilate(aperture, 2) & fg & lower & ~material & (cloth_support <= 2)
             removed |= fringe & (dark | red_shadow) & (boundary(base_fg) | ~base_fg)
         removed &= ~(headwear | protected_material)
+    if conservative:
+        # A base pose cannot tell us whether the source wears a skirt, ribbon
+        # or trousers. Only the detected skin aperture may cut source material.
+        removed = aperture_removed
+    protected=protected_material | (headwear if headwear is not None else False)
+    removed &= ~protected
+    if conservative:
+        palm_aperture = source_palm_apertures(rgb,fg,b,base_fg)
+        palm_aperture &= ~structural_protection
+        if headwear is not None:
+            palm_aperture &= ~headwear
+        removed |= palm_aperture
+        if sheet_skin_palette is not None and sheet_cloth_palette is not None:
+            skin_residue = iterative_skin_residue(
+                rgb, fg, base_skin, source_skin | palm_aperture, removed,
+                protected_material | collar | structural_protection |
+                (headwear if headwear is not None else False),
+                sheet_skin_palette, sheet_cloth_palette)
+            removed |= skin_residue
+    removed=refine_bare_foot_edges(rgb,fg,base_fg,base_skin,removed,material,protected,base_head)
     garment = fg & ~removed
     erase = np.zeros(fg.shape,bool)
     force_outfit = np.zeros(fg.shape,bool)
@@ -782,7 +1127,19 @@ def _overlay_frame_layers(base, outfit, *, background_threshold, skin_expand=0,
         # Revealing outside the base means transparency, never invented skin.
         garment = (garment & ~reveal & ~erase) | (keep & foreground_mask(o,background_threshold))
     protected_spurs = force_outfit | (headwear if headwear is not None else False)
-    garment, removed_spurs = remove_color_spurs(rgb, garment, protected_spurs)
+    if conservative:
+        removed_spurs = 0
+        # Cutting a source face/fist can strand tiny old rim fragments. Only
+        # discard detached fragments touching that cut, not attached embroidery
+        # or deliberately retained source/accessory pixels.
+        for points in components(garment):
+            if len(points) <= 2:
+                fragment = group_mask(fg.shape, points)
+                if np.any(fragment & dilate(removed, 1)) and not np.any(fragment & protected_spurs):
+                    garment[fragment] = False
+                    removed_spurs += len(points)
+    else:
+        garment, removed_spurs = remove_color_spurs(rgb, garment, protected_spurs)
     debris += removed_spurs
     anatomy = base_fg & ~garment & ~erase
     output = np.zeros_like(b)
@@ -932,7 +1289,208 @@ def shade_materials(rgb, fill, budget, cell_size):
     return coherent_fabric(result,fill,cell_size)
 
 
-def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size, headwear=None):
+def clean_parallel_outline(rgb, fabric, contour, distances=(1,2)):
+    """Recolor a redundant inner stroke alongside a continuous outer edge.
+
+    Require three parallel pixels and a brighter inward fabric donor. This
+    leaves crossing folds, narrow ribbons, dark panels and silhouettes intact.
+    Run on one frame at a time, before palette fitting or seam normalization.
+    """
+    result = rgb.copy()
+    light = luminance(rgb)
+    dark = fabric & (light < 105) & ~contour
+    repaired = np.zeros(fabric.shape,bool)
+    for dy,dx in ((0,1),(0,-1),(1,0),(-1,0)):
+        ty,tx = -dx,dy
+        run = dark & shift(dark,ty,tx) & shift(dark,-ty,-tx)
+        run = dark & (run | shift(run,ty,tx) | shift(run,-ty,-tx))
+        donor = shift(rgb,-dy,-dx)
+        donor_light = shift(light,-dy,-dx)
+        supported = shift(fabric,-dy,-dx) & (donor_light > 115) & (donor_light > light+55)
+        for distance in distances:
+            outer = shift(contour,dy*distance,dx*distance)
+            parallel = outer & shift(outer,ty,tx) & shift(outer,-ty,-tx)
+            gap = np.ones_like(fabric) if distance == 1 else (
+                shift(fabric,dy,dx) & (shift(light,dy,dx) > light+35))
+            take = run & supported & parallel & gap & ~repaired
+            result[take] = donor[take]
+            repaired |= take
+    return result
+
+
+def thin_contour(mask):
+    """Thin ink, not alpha, while retaining endpoints and connected loops."""
+    result = mask.copy()
+    for _ in range(max(mask.shape)):
+        changed = False
+        for step in (0,1):
+            n = [shift(result,dy,dx) for dy,dx in
+                 ((1,0),(1,-1),(0,-1),(-1,-1),(-1,0),(-1,1),(0,1),(1,1))]
+            degree = sum(p.astype(np.uint8) for p in n)
+            transitions = sum((~n[i] & n[(i+1)%8]).astype(np.uint8) for i in range(8))
+            allowed = (~(n[0]&n[2]&n[4]) & ~(n[2]&n[4]&n[6])) if step == 0 else (
+                ~(n[0]&n[2]&n[6]) & ~(n[0]&n[4]&n[6]))
+            remove = result & (degree >= 2) & (degree <= 6) & (transitions == 1) & allowed
+            changed |= bool(remove.any())
+            result[remove] = False
+        if not changed:
+            break
+    # Tiny isolated ink marks can otherwise vanish in a parallel thinning
+    # iteration. Retain one original pixel for each such component.
+    for points in components(mask):
+        if not np.any(result[points[:,0],points[:,1]]):
+            p=points[np.argmin(((points-points.mean(axis=0))**2).sum(1))]
+            result[p[0],p[1]]=True
+    return result
+
+
+def repaint_redundant_ink(rgb, fabric, redundant, retained):
+    """Fill discarded ink from local cloth, never skin or another frame."""
+    result = rgb.copy()
+    donors = fabric & ~redundant & ~retained & (luminance(rgb) > 110)
+    targets = np.argwhere(redundant)
+    for y,x in targets:
+        y0,y1=max(0,y-2),min(fabric.shape[0],y+3)
+        x0,x1=max(0,x-2),min(fabric.shape[1],x+3)
+        points = np.argwhere(donors[y0:y1,x0:x1])+[y0,x0]
+        if len(points):
+            p=points[np.argmin(((points-[y,x])**2).sum(1))]
+            result[y,x]=rgb[p[0],p[1]]
+    return result
+
+
+def consolidate_palette_islands(rgb, fill, cell_size):
+    """Merge isolated near-color dots after quantization, within a frame.
+
+    Connected folds, high-contrast embroidery and anatomy are excluded. Votes
+    use exact palette entries, so this cannot add colors or blur an edge.
+    """
+    result = rgb.copy()
+    cw,ch = cell_size
+    yy,xx = np.indices(fill.shape)
+    offsets = [(dy,dx) for dy in (-1,0,1) for dx in (-1,0,1) if dy or dx]
+    for _ in range(2):
+        source = result.copy()
+        neighbors = [shift(source,dy,dx) for dy,dx in offsets]
+        valid = [fill & shift(fill,dy,dx) & (yy//ch == (yy-dy)//ch)
+                 & (xx//cw == (xx-dx)//cw) for dy,dx in offsets]
+        own = sum((v & np.all(n == source,axis=2)).astype(np.uint8)
+                  for n,v in zip(neighbors,valid))
+        best = np.zeros_like(own)
+        for n,v in zip(neighbors,valid):
+            votes = sum((nv & np.all(other == n,axis=2)).astype(np.uint8)
+                        for other,nv in zip(neighbors,valid))
+            distance = np.linalg.norm(source.astype(float)-n.astype(float),axis=2)
+            # Only collapse a low-contrast singleton with a decisive local
+            # majority. Thin highlights, stitches and line endpoints survive.
+            take = v & (own <= 1) & (votes >= 6) & (votes > best) & (distance < 32)
+            take &= (luminance(source) > 100) & (luminance(n) > 100)
+            result[take] = n[take]
+            best[take] = votes[take]
+    return result
+
+
+def clarify_fabric_tones(rgb, fill, cell_size, strength=.16, saturation=.04):
+    """Gently separate source tones without turning shading into new ink.
+
+    Pixels do not move, alpha is untouched, and flat cloth is left alone. The
+    caller fits the adjusted pixels to the requested palette budget.
+    """
+    result = rgb.copy()
+    levels = luminance(rgb).astype(np.float32)
+    cw, ch = cell_size
+    for y in range(0, fill.shape[0], ch):
+        for x in range(0, fill.shape[1], cw):
+            region = fill[y:y+ch, x:x+cw]
+            tone = levels[y:y+ch, x:x+cw]
+            if np.count_nonzero(region) < 8:
+                continue
+            values = tone[region]
+            low, high = np.percentile(values, (10, 90))
+            if high-low < 28:
+                continue
+            center = float(np.median(values))
+            delta = tone-center
+            eligible = region & (np.abs(delta) >= 6)
+            if not np.any(eligible):
+                continue
+            # Large contrast changes turn antialiased folds into dark flecks
+            # and flatten ivory highlights. Bound the tonal change regardless
+            # of how bright the other materials in this frame happen to be.
+            shift = np.clip(delta[eligible]*strength, -8, 8)
+            source = rgb[y:y+ch, x:x+cw].astype(np.float32)
+            chroma = source[eligible] - tone[eligible, None]
+            source[eligible] = tone[eligible, None] + shift[:, None] + chroma*(1+saturation)
+            result[y:y+ch, x:x+cw][eligible] = np.clip(np.rint(source[eligible]),0,255).astype(np.uint8)
+    return result
+
+
+def fit_source_palette(rgb, fill, budget, cell_size, *, redraw=False):
+    """Fit a crisp, source-only palette without smoothing pixel structure.
+
+    A single shared palette retains hues and shading across frames. No color
+    dithering or interpolated colors; these create speckles or muddy ramps at
+    sprite scale. Optional tone separation is bounded, and palette centers
+    snap to real source pixels.
+    """
+    source = coherent_fabric(rgb,fill,cell_size)
+    working = clarify_fabric_tones(source,fill,cell_size) if redraw else source
+    pixels = source[fill]
+    targets = working[fill]
+    if not len(pixels):
+        return source
+    source_palette = np.unique(pixels,axis=0)
+    if len(source_palette) <= budget:
+        result = source.copy()
+        result[fill] = source_palette[nearest_colors(targets,source_palette)]
+        return consolidate_palette_islands(result,fill,cell_size)
+    sample = Image.fromarray(pixels.reshape(1,-1,3))
+    quantized = sample.quantize(colors=budget,method=Image.Quantize.MEDIANCUT,dither=Image.Dither.NONE)
+    raw = np.asarray(quantized.getpalette(),np.uint8).reshape(-1,3)
+    palette = raw[np.unique(np.asarray(quantized))].astype(np.float32)
+    weights = np.array([.299,.587,.114],np.float32)
+    # Refine with all source pixels, then snap each center to its nearest real
+    # source color. This prevents muddy averaged shades and invented pixels.
+    for _ in range(6):
+        labels = nearest_colors(pixels,palette)
+        for i in range(len(palette)):
+            selected = pixels[labels == i]
+            if len(selected):
+                center = selected.mean(axis=0)
+                distance = ((selected.astype(np.float32)-center)**2*weights).sum(axis=1)
+                palette[i] = selected[np.argmin(distance)]
+    palette = np.rint(palette).astype(np.uint8)
+    result = source.copy()
+    result[fill] = palette[nearest_colors(targets,palette)]
+    return consolidate_palette_islands(result,fill,cell_size)
+
+
+def garment_edge_mask(rgb, foreground, fabric, anatomy):
+    """Repair supported silhouette strokes and existing seams, never skin joins.
+
+    Internal strokes require a source luminance valley and a connected run;
+    this prevents a bright collar or an isolated shading dot becoming ink.
+    """
+    light = luminance(rgb)
+    neighbors = [(dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx]
+    support = sum(shift(foreground, dy, dx).astype(np.uint8) for dy, dx in neighbors)
+    outside = boundary(foreground) & fabric
+    # The silhouette is geometry, not a luminance threshold. Bright hems and
+    # soles need a border too. Thin ribbon tips retain their source color.
+    contour = outside & ((light < 110) | (support >= 4))
+    valleys = np.zeros_like(fabric)
+    for dy, dx in ((0, 1), (1, 0)):
+        a, b = shift(light, dy, dx), shift(light, -dy, -dx)
+        backed = shift(fabric, dy, dx) & shift(fabric, -dy, -dx)
+        valleys |= backed & (a > light+25) & (b > light+25)
+    valleys &= fabric & (light < 105) & ~dilate(anatomy, 1) & ~dilate(outside, 1)
+    for points in components(valleys):
+        if len(points) >= 3:
+            contour |= group_mask(fabric.shape, points)
+    return contour
+
+
+def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size, headwear=None, conservative=False):
     out = rgba.copy()
     ink = outline_color(out, anatomy)
     contours = np.zeros(garment.shape,bool)
@@ -949,27 +1507,42 @@ def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size, headwe
                 # Preserve the colored center of a one-pixel ribbon/tip.
                 # Existing dark outlines can still be normalized there.
                 contours[y:y+ch,x:x+cw] = boundary(fg) & fabric & ((light < 135) | (support >= 4))
-                if paint == 3:
-                    # Keep connected dark seams inside the silhouette (belt,
-                    # cuff and folds). Otherwise the material ramps wash them
-                    # into broad shadow patches. Restrict to high contrast
-                    # edges so a dark fabric panel is not filled with ink.
-                    dark = fabric & (light < 92)
-                    adjacent = sum(shift(dark,dy,dx).astype(np.uint8)
-                                   for dy,dx in ((0,1),(0,-1),(1,0),(-1,0)))
-                    bright = np.maximum.reduce([np.where(shift(fabric,dy,dx),shift(light,dy,dx),0)
-                                                for dy in (-1,0,1) for dx in (-1,0,1)])
-                    # Ink follows narrow ridges; broad shadows stay in the
-                    # material ramp instead of becoming solid black patches.
-                    ridge = np.zeros(fabric.shape,bool)
-                    for dy,dx in ((0,1),(1,0),(1,1),(1,-1)):
-                        a = shift(light,dy,dx)
-                        b = shift(light,-dy,-dx)
-                        paired = shift(fabric,dy,dx) & shift(fabric,-dy,-dx)
-                        ridge |= paired & (a > light+12) & (b > light+12)
-                    block = dark & shift(dark,0,1) & shift(dark,1,0) & shift(dark,1,1)
-                    thick = block | shift(block,-1,0) | shift(block,0,-1) | shift(block,-1,-1)
-                    contours[y:y+ch,x:x+cw] |= dark & ridge & ~thick & (adjacent >= 1) & (bright-light > 55)
+                # The composite silhouette hides internal cuff/collar edges.
+                # Normalize existing dark cloth-side pixels at those joins,
+                # without adding ink over the original base hand or face.
+                skin = anatomy[y:y+ch,x:x+cw]
+                joint = np.logical_or.reduce([shift(skin,dy,dx)
+                                             for dy,dx in ((0,1),(0,-1),(1,0),(-1,0))])
+                base_ink = skin & (light < 105)
+                beside_base_ink = np.logical_or.reduce([shift(base_ink,dy,dx)
+                                                       for dy,dx in ((0,1),(0,-1),(1,0),(-1,0))])
+                cloth_support = sum(shift(fabric,dy,dx).astype(np.uint8)
+                                    for dy,dx in ((0,1),(0,-1),(1,0),(-1,0)))
+                # Reconstruct missing cuff boundaries, but use the base's
+                # existing ink as the shared edge when it already has one.
+                if not conservative:
+                    contours[y:y+ch,x:x+cw] |= joint & fabric & ~beside_base_ink & (cloth_support >= 2)
+                duplicate = fabric & beside_base_ink & (light < 105) & ~boundary(fg)
+                contours[y:y+ch,x:x+cw] &= ~duplicate
+                tile = out[y:y+ch,x:x+cw,:3]
+                if conservative:
+                    contours[y:y+ch,x:x+cw] = garment_edge_mask(tile,fg,fabric,skin)
+                    # Remove the cloth-side duplicate directly under an
+                    # already restored palm outline, but leave neck joins alone.
+                    head_y = np.nonzero(base_head_mask(out[y:y+ch,x:x+cw],skin))[0]
+                    if len(head_y):
+                        yy = np.indices(skin.shape)[0]
+                        cuff_duplicate = duplicate & (yy > head_y.max()+2)
+                        tile[:] = repaint_redundant_ink(tile,fabric,cuff_duplicate,
+                            contours[y:y+ch,x:x+cw])
+                    tile[:] = clean_parallel_outline(tile, fabric,
+                        contours[y:y+ch,x:x+cw], distances=(1,))
+                else:
+                    tile[:] = repaint_redundant_ink(tile,fabric,duplicate,contours[y:y+ch,x:x+cw])
+                    tile[:] = clean_parallel_outline(tile,fabric,contours[y:y+ch,x:x+cw])
+                light = luminance(tile)
+                # Internal folds keep their source tones. Turning local dark
+                # ridges into uniform ink produced false stitches and speckles.
         out[contours,:3] = ink
     locked = np.unique(out[:,:,:3][anatomy | contours],axis=0)
     fill = garment & ~contours
@@ -979,15 +1552,8 @@ def repaint(rgba, anatomy, garment, *, colors, paint, outline, cell_size, headwe
         remaining = colors-len(locked)
         if remaining < 1:
             raise ValueError(f'Palette needs at least {len(locked)+1} colors to preserve base anatomy; choose a larger limit')
-        if paint == 3:
-            hair = fill & headwear if headwear is not None else np.zeros_like(fill)
-            cloth = fill & ~hair
-            if hair.any() and cloth.any() and remaining >= 2:
-                hair_budget = min(6, max(1, remaining//2))
-                out[:,:,:3] = shade_materials(out[:,:,:3],hair,hair_budget,cell_size)
-                out[:,:,:3] = shade_materials(out[:,:,:3],cloth,min(9,remaining-hair_budget),cell_size)
-            else:
-                out[:,:,:3] = shade_materials(out[:,:,:3],fill,min(remaining,9),cell_size)
+        if paint in (3,4):
+            out[:,:,:3] = fit_source_palette(out[:,:,:3],fill,remaining,cell_size,redraw=paint == 4)
             out[out[:,:,3] == 0] = 0
             return out, contours
         count = min(remaining, {0:256,1:12,2:6}[paint])
@@ -1037,7 +1603,7 @@ def repair_frame(base, outfit, *, background_threshold, skin_expand, outline=Tru
 def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin_expand,
                  outline=True, cleanup=3, paint=1, overrides=None, return_masks=False,
                  base_profile=None, lock_base=False, retouch=None, composition='pinned', accessories=False):
-    if composition not in ('layers','pinned'):
+    if composition not in ('layers','pinned','cutout'):
         raise ValueError('Unknown composition mode')
     if not isinstance(rows,int) or not isinstance(cols,int) or not 1 <= rows <= 64 or not 1 <= cols <= 64:
         raise ValueError('Rows and columns must be between 1 and 64')
@@ -1047,7 +1613,7 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         raise ValueError('Sheet size is not divisible by the requested grid')
     if not 0 <= colors <= 256 or not np.isfinite(background_threshold) or not 0 <= background_threshold <= 255:
         raise ValueError('Invalid palette limit or background threshold')
-    if not 0 <= skin_expand <= 4 or not 0 <= cleanup <= 16 or paint not in (0,1,2,3):
+    if not 0 <= skin_expand <= 4 or not 0 <= cleanup <= 16 or paint not in (0,1,2,3,4):
         raise ValueError('Invalid cleanup, paint or skin expansion setting')
     if overrides is not None and overrides.size != base.size:
         raise ValueError('Correction mask must match the sheet dimensions')
@@ -1058,6 +1624,10 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
     if composition == 'pinned' and lock_base and base_profile is None:
         base_profile = build_base_profile(base,rows=rows,cols=cols,threshold=background_threshold)
     cw, ch = base.width//cols, base.height//rows
+    sheet_skin_palette, sheet_cloth_palette = (None, None)
+    if composition == 'cutout':
+        sheet_skin_palette, sheet_cloth_palette = learn_sheet_material_palettes(
+            base, outfit, rows=rows, cols=cols, threshold=background_threshold, cleanup=cleanup)
     output = np.zeros((base.height,base.width,4),np.uint8)
     anatomy = np.zeros(output.shape[:2],bool)
     garment = np.zeros(output.shape[:2],bool)
@@ -1068,9 +1638,13 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         for col in range(cols):
             x,y = col*cw,row*ch
             box = (x,y,x+cw,y+ch)
-            compose = _overlay_frame_layers if composition == 'layers' else _frame_layers
+            compose = _overlay_frame_layers if composition != 'pinned' else _frame_layers
             extra = {}
-            if accessories and composition == 'layers':
+            if composition == 'cutout':
+                extra['conservative'] = True
+                extra['sheet_skin_palette'] = sheet_skin_palette
+                extra['sheet_cloth_palette'] = sheet_cloth_palette
+            if accessories and composition != 'pinned':
                 h = headwear_mask(base.crop(box), outfit.crop(box), background_threshold, cleanup)
                 if overrides is not None:
                     labels = np.asarray(overrides.crop(box).convert('RGBA'))
@@ -1094,7 +1668,7 @@ def repair_sheet(base, outfit, *, rows, cols, colors, background_threshold, skin
         output[painted] = manual[painted]
         output[painted,3] = 255
         anatomy[painted] = reconstructed[painted] = garment[painted] = False
-    output,contours = repaint(output,anatomy | reconstructed | painted,garment,colors=colors,paint=paint,outline=outline,cell_size=(cw,ch),headwear=headwear if accessories else None)
+    output,contours = repaint(output,anatomy | reconstructed | painted,garment,colors=colors,paint=paint,outline=outline,cell_size=(cw,ch),headwear=headwear if accessories else None,conservative=composition == 'cutout')
     for stats in reports:
         x,y = stats['col']*cw,stats['row']*ch
         stats['outlined_outfit_pixels'] = int(contours[y:y+ch,x:x+cw].sum())
@@ -1121,10 +1695,10 @@ def parse_args():
     parser.add_argument('--background-threshold',type=float,default=36)
     parser.add_argument('--skin-expand',type=int,default=0)
     parser.add_argument('--cleanup',type=int,default=3)
-    parser.add_argument('--paint',type=int,choices=(0,1,2,3),default=3)
+    parser.add_argument('--paint',type=int,choices=(0,1,2,3,4),default=4)
     parser.add_argument('--base-profile',type=Path)
     parser.add_argument('--retouch',type=Path)
-    parser.add_argument('--composition',choices=('layers','pinned'),default='layers')
+    parser.add_argument('--composition',choices=('cutout','layers','pinned'),default='cutout')
     parser.add_argument('--free-skin',action='store_true',help='Use legacy outfit-guided hand locations')
     parser.add_argument('--no-outline',action='store_true')
     parser.add_argument('--overrides',type=Path)

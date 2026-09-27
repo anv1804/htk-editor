@@ -51,6 +51,7 @@ export interface AppState {
   busy: boolean;
   revision: number;
   outfitLayer?: string;
+  outfitLayerImage?: HTMLImageElement | null;
   headwearLayer?: string;
 }
 

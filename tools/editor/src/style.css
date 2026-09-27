@@ -1,5 +1,72 @@
 @import "tailwindcss";
 
+/* Studio layout: source settings / uninterrupted canvas / review controls. */
+.studio { font-family: "Segoe UI", sans-serif; font-size: 13px; }
+.studio header { height: 58px; }
+.studio #leftPanel { width: 326px; }
+.studio #rightPanel { width: 260px; }
+.studio .source-panel { overflow-y: auto; padding: 12px; gap: 12px; }
+.studio .aseprite-vertical-toolbox { width: 68px; gap: 4px; overflow-y: auto; }
+.studio [data-brush-val] { width: 58px; min-height: 34px; font-size: 11px; font-weight: 600; }
+.studio .studio-section { border: 1px solid #303940; border-radius: 8px; flex-shrink: 0; background: #171d22; }
+.studio .studio-section > summary { cursor: pointer; padding: 11px 10px; color: #c1d0dc; font-size: 11px; font-weight: 650; }
+.studio .studio-section > :not(summary) { margin: 0 10px 10px; }
+.studio .studio-section > div.border { border: 0; padding: 0; background: transparent; }
+.studio .workflow-note { color: #91a5b4; font-size: 11px; line-height: 1.65; margin-bottom: 10px; }
+.studio .drop { height: 96px; min-height: 96px; max-height: 96px; background: #101519; }
+.studio #status { white-space: normal; flex-shrink: 0; line-height: 1.6; padding: 10px; }
+.studio #inspectorTab { background: #10161b; }
+.studio #inspectorContent { padding: 24px; }
+.studio .viewport-card { box-shadow: none; border-color: #34424c; padding: 7px; }
+.studio .canvas-container { border: 1px solid #3b4854; box-shadow: none; border-radius: 2px; }
+.studio .canvas-bg-neutral { background-image: conic-gradient(#303a44 25%, #37424d 0 50%, #303a44 0 75%, #37424d 0) !important; background-size: 16px 16px !important; }
+.studio .animation-stage { height: 160px; min-height: 160px; flex-shrink: 0; align-items: center; }
+.studio #animPreviewCanvas { height: 144px; width: 144px; max-width: 100%; object-fit: contain; background: transparent; }
+.studio #bottomPanel { height: 158px; min-height: 130px; }
+.studio #timelineMatrixScroll { display: flex; align-items: stretch; gap: 8px; }
+.studio .anim-row { flex: 0 0 auto; flex-direction: column; align-items: flex-start; padding: 6px; gap: 6px; margin: 0; }
+.studio .anim-row-title-box { width: auto; min-width: 0; padding: 0 4px; }
+.studio .anim-row-label { font-size: 10px; }
+.studio .export-menu { position: relative; }
+.studio .export-menu[open] { position: absolute; right: 16px; top: 8px; width: 210px; z-index: 100; box-shadow: 0 12px 30px #0009; }
+.studio .export-menu button { display: block; width: calc(100% - 20px); text-align: left; }
+.studio .reset-layout { padding: 8px; color: #aabdc9; border: 1px solid #34424c; border-radius: 6px; }
+.studio .panel-toggle { display: none; }
+.studio .project-actions, .studio .view-modes { display: flex; gap: 6px; }
+.studio .project-actions button, .studio .view-modes button, .studio .processing-presets button { border: 1px solid #34424c; background: #1b242b; color: #bdcdd8; border-radius: 5px; padding: 6px 9px; font-size: 11px; cursor: pointer; }
+.studio .view-modes { padding: 6px 12px; background: #151d23; border-bottom: 1px solid #303b44; flex-shrink: 0; }
+.studio .view-modes button[aria-pressed=true] { color: #67ead0; border-color: #288c7c; background: #15362f; }
+.studio[data-view=result] .frame-grid > .viewport-card:not(:last-child), .studio[data-view=layer] .frame-grid > .viewport-card:not(:last-child) { display: none; }
+.studio .editing-options { border: 1px solid #34424c; background: #172129; padding: 12px; border-radius: 8px; display: grid; gap: 10px; }
+.studio .editing-options strong { color: #72ddc7; }
+.studio .editing-options[hidden] { display: none; }
+.studio .editing-options label { display: grid; gap: 6px; color: #a7bbc8; }
+.studio .editing-options select { background: #10181e; color: #d6e2ea; border: 1px solid #34424c; padding: 6px; border-radius: 4px; width: 100%; }
+.studio .editing-options p, .studio .palette-warning { font-size: 10px; color: #95aab8; line-height: 1.6; }
+.studio .processing-presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.studio .processing-presets button { padding: 5px; font-size: 10px; }
+.studio .studio-status { border-top: 1px solid #303b44; background: #172129; flex-shrink: 0; }
+.studio .studio-status #status { margin: 0; padding: 6px 12px; font-size: 11px; }
+.studio select:disabled { opacity: .4; cursor: not-allowed; }
+.studio header > div:last-of-type { flex-wrap: wrap; }
+.studio #rightPanel > div > * { flex-shrink: 0; }
+.studio .awaiting-result .canvas-container::after { content: 'Bấm Xử lý sprite'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b4c8d6; font-size: 11px; pointer-events: none; }
+.studio main > section > div:first-child { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px 10px; }
+@media (max-width: 1300px) { .studio #leftPanel { width: 290px; } .studio #rightPanel { width: 230px; } }
+@media (max-width: 1000px) { .studio #rightPanel { width: 195px; min-width: 180px; } .studio #leftPanel { width: 255px; min-width: 240px; } }
+@media (max-width: 850px) {
+  .studio header { flex-wrap: wrap; height: auto; min-height: 80px; padding: 8px; gap: 6px; }
+  .studio header > div:first-child { font-size: 11px; }
+  .studio header > div:first-child span:last-child { display: none; }
+  .studio .panel-toggle { display: block; padding: 5px 10px; border: 1px solid #34424c; border-radius: 5px; color: #bdd1df; }
+  .studio #leftPanel, .studio #rightPanel { display: none; position: absolute; top: 0; bottom: 0; width: 310px !important; z-index: 40; box-shadow: 0 10px 30px #0009; }
+  .studio #rightPanel { right: 0; }
+  .studio.source-open #leftPanel, .studio.review-open #rightPanel { display: flex; }
+  .studio #leftSplitter, .studio #rightSplitter { display: none; }
+  .studio #bottomPanel > div:first-child { height: auto; min-height: 30px; flex-wrap: wrap; }
+  .studio .export-menu[open] { top: 8px; }
+}
+
 @theme {
   --color-as-bg: #111315;
   --color-as-panel: #191c1f;
@@ -50,6 +117,9 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    height: 8rem;
+    min-height: 8rem;
+    max-height: 8rem;
 }
 .drop:hover, .drop.drag {
     border-color: #43d17b;
@@ -64,9 +134,12 @@
 .drop img {
     max-width: 100%;
     max-height: 100%;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     display: none;
 }
+.drop img:not([src]), .drop img[src=""] { display: none; }
 .drop.loaded img {
     display: block;
 }
