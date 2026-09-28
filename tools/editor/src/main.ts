@@ -22,7 +22,7 @@ setupItemStudio();
   if (!isPlaying) renderLivePlayerFrame(Number(($("frame") as HTMLInputElement).value) || 1);
 };
 
-async function setSource(kind: "base" | "outfit", url: string) {
+async function setSource(kind: "base" | "outfit" | "greenBase" | "headBase" | "bodyBase", url: string) {
   if (!url.startsWith("data:")) {
     const response = await fetch(url);
     if (!response.ok) throw new Error("Không tải được ảnh.");
@@ -31,6 +31,16 @@ async function setSource(kind: "base" | "outfit", url: string) {
   const img = await loadImage(url);
   if (img.width * img.height > 4194304) throw new Error("Ảnh vượt quá 4 triệu pixel.");
   
+  if (kind === "greenBase" || kind === "headBase" || kind === "bodyBase") {
+    if (state.base && (img.width !== state.base.width || img.height !== state.base.height))
+      throw new Error("Ảnh tham chiếu phải cùng kích thước với base da chuẩn.");
+    state[kind] = img;
+    ($(`${kind}Preview`) as HTMLImageElement).src = url;
+    $(`${kind}Drop`).classList.add("loaded");
+    $(`${kind}Meta`).textContent = `${img.width} × ${img.height}`;
+    clearResult(); render();
+    return;
+  }
   if (kind === "base") { state.base = img; } else { state.outfit = img; }
   
   ($(`${kind}Preview`) as HTMLImageElement).src = url;
@@ -38,10 +48,12 @@ async function setSource(kind: "base" | "outfit", url: string) {
   $(`${kind}Meta`).textContent = `${img.width} × ${img.height}`;
   
   const reference = state.base || img;
-  corrections.width = reference.width;
-  corrections.height = reference.height;
-  paintLayer.width = reference.width; 
-  paintLayer.height = reference.height;
+  if (kind === "outfit" || corrections.width !== reference.width || corrections.height !== reference.height) {
+    corrections.width = reference.width;
+    corrections.height = reference.height;
+    paintLayer.width = reference.width;
+    paintLayer.height = reference.height;
+  }
   
   if (kind === "base") {
     baseMap.width = reference.width; 
@@ -323,10 +335,10 @@ for (const canvasId of ["baseCanvas", "outfitCanvas", "editCanvas"]) {
 }
 
 // File drop setups
-for (const kind of ["base", "outfit"]) {
+for (const kind of ["base", "outfit", "greenBase", "headBase", "bodyBase"] as const) {
   const accept = async (file: File) => {
     if (!file || state.busy) return;
-    try { await setSource(kind as "base" | "outfit", await readFile(file)); remember(); }
+    try { await setSource(kind, await readFile(file)); remember(); }
     catch (error: any) { status(error.message, true); }
   };
   const fileInput = $(`${kind}File`) as HTMLInputElement;
@@ -339,6 +351,30 @@ for (const kind of ["base", "outfit"]) {
     drop.addEventListener("keydown", event => { if (event.key === "Enter") fileInput.click(); });
   }
 }
+$("clearGreenBase").addEventListener("click", () => {
+  state.greenBase = null;
+  ($("greenBasePreview") as HTMLImageElement).removeAttribute("src");
+  $("greenBaseDrop").classList.remove("loaded");
+  $("greenBaseMeta").textContent = "";
+  ($("greenBaseFile") as HTMLInputElement).value = "";
+  clearResult(); render(); remember();
+});
+$("clearHeadBase").addEventListener("click", () => {
+  state.headBase = null;
+  ($("headBasePreview") as HTMLImageElement).removeAttribute("src");
+  $("headBaseDrop").classList.remove("loaded");
+  $("headBaseMeta").textContent = "";
+  ($("headBaseFile") as HTMLInputElement).value = "";
+  clearResult(); render(); remember();
+});
+$("clearBodyBase").addEventListener("click", () => {
+  state.bodyBase = null;
+  ($("bodyBasePreview") as HTMLImageElement).removeAttribute("src");
+  $("bodyBaseDrop").classList.remove("loaded");
+  $("bodyBaseMeta").textContent = "";
+  ($("bodyBaseFile") as HTMLInputElement).value = "";
+  clearResult(); render(); remember();
+});
 
 for (const id of settings) {
   const el = $(id);
@@ -539,6 +575,7 @@ if (repairEl) repairEl.onclick = async () => {
     if (!response.ok) throw new Error(result.error || "Không xử lý được ảnh.");
     if (!result.report?.composition) throw new Error("Server chưa cập nhật chế độ ghép lớp. Khởi động lại server.");
     if ((result.report?.version || 0) < 6) throw new Error("Server chưa cập nhật v3. Khởi động lại tools/repair_outfit_ui.py.");
+    if (!result.report?.greenBaseSource) throw new Error("Server chưa hỗ trợ base xanh tự động. Hãy mở bản Outfit Studio mới.");
     const [image, mask, outfitImage, headwearImage, baseImage] = await Promise.all([
       loadImage(result.image), loadImage(result.mask),
       result.outfitLayer ? loadImage(result.outfitLayer) : Promise.resolve(null),
@@ -569,7 +606,10 @@ if (repairEl) repairEl.onclick = async () => {
     const reviewCount=learning?.reviewFrames?.length || 0;
     $('reviewLearning').hidden=!reviewCount;
     memoryStatus.textContent=learning ? `${learned.trim()} Dùng ${(learning.rememberedMaskPixels || 0)+(learning.rememberedPaintPixels || 0)} pixel đã ghi nhớ.${reviewCount ? ` ${reviewCount} frame có vùng chưa chắc chắn.` : ''}` : 'Chế độ này không đối chiếu tóc.';
-    status(`Hoàn tất: ${result.paletteColors} màu.${logoMessage}${learned}`);
+    const greenGuide = result.report.greenBaseSource === 'bundled' ? ' Base xanh tham chiếu được dùng tự động.' : '';
+    const headGuide = result.report.headBaseSource === 'bundled' ? ' Base đầu được dùng tự động.' : '';
+    const bodyGuide = result.report.bodyBaseSource === 'bundled' ? ' Base thân được dùng tự động.' : '';
+    status(`Hoàn tất: ${result.paletteColors} màu.${greenGuide}${headGuide}${bodyGuide}${logoMessage}${learned}`);
     remember();
   } catch (error: any) {
     status(error instanceof TypeError ? "Không kết nối được server. Chạy tools/repair_outfit_ui.py rồi mở http://127.0.0.1:8765/." : error.message, true);
@@ -1039,6 +1079,7 @@ $("maskOpacity")?.addEventListener("input", saveLayout);
 $("showProfile")?.addEventListener("change", saveLayout);
 
 (async () => {
+  let loadedDefaultBase = false;
   try {
     const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
     if (saved) {
@@ -1055,6 +1096,9 @@ $("showProfile")?.addEventListener("change", saveLayout);
       // Restore the user's paint and outline settings verbatim. Loading an
       // existing project must not silently enable a stronger finishing pass.
       if (saved.base) await setSource("base", saved.base);
+      if (saved.greenBase) await setSource("greenBase", saved.greenBase);
+      if (saved.headBase) await setSource("headBase", saved.headBase);
+      if (saved.bodyBase) await setSource("bodyBase", saved.bodyBase);
       if (saved.outfit) await setSource("outfit", saved.outfit);
       if (saved.corrections && state.base) {
         const img = await loadImage(saved.corrections);
@@ -1068,8 +1112,16 @@ $("showProfile")?.addEventListener("change", saveLayout);
     }
   } catch (_) { status("Chọn lại ảnh để bắt đầu."); }
   if (!state.base && location.protocol !== "file:") {
-    try { await setSource("base", "/assets/default-base.png"); }
+    try { await setSource("base", "/assets/default-base.png"); loadedDefaultBase = true; }
     catch (_) { status("Không nạp được base mặc định. Bạn có thể chọn base thủ công.", true); }
+  }
+  if (loadedDefaultBase) {
+    try { await setSource("greenBase", "/assets/default-green-base.png"); }
+    catch (_) { status("Không nạp được base xanh mặc định. Bạn có thể chọn thủ công.", true); }
+    try { await setSource("headBase", "/assets/default-head-base.png"); }
+    catch (_) { status("Không nạp được base đầu mặc định. Bạn có thể chọn thủ công.", true); }
+    try { await setSource("bodyBase", "/assets/default-body-base.png"); }
+    catch (_) { status("Không nạp được base thân mặc định. Bạn có thể chọn thủ công.", true); }
   }
   if (location.protocol === "file:") {
     const fileNotice = $("fileNotice");

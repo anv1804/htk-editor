@@ -38,6 +38,10 @@ export interface FrameReport {
 export interface RepairReport {
   version: number;
   composition: string;
+  greenBaseSource?: 'uploaded' | 'bundled' | 'none';
+  headBaseSource?: 'uploaded' | 'bundled' | 'none';
+  bodyBaseSource?: 'uploaded' | 'bundled' | 'none';
+  greenMarkerPixels?: number;
   logoCleanup?: { status: string; correctedPixels: number };
   learning?: { iterations?: number; recoveredHairPixels?: number; converged?: boolean;
     rememberedMaskPixels?: number; rememberedPaintPixels?: number; reviewFrames?: number[]; automaticPaletteBudget?: number };
@@ -46,6 +50,9 @@ export interface RepairReport {
 
 export interface AppState {
   base: HTMLImageElement | null;
+  greenBase: HTMLImageElement | null;
+  headBase: HTMLImageElement | null;
+  bodyBase: HTMLImageElement | null;
   outfit: HTMLImageElement | null;
   result: HTMLImageElement | null;
   mask: HTMLImageElement | null;

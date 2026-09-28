@@ -35,8 +35,8 @@ export function setupWorkspace() {
   const sources=$('baseDrop').closest('details')!;
   sources.classList.add('asset-section');
   sources.querySelector('summary')!.textContent='Ảnh nguồn';
-  for (const [id,label] of [['baseDrop','01 · Nhân vật gốc'],['outfitDrop','02 · Trang phục']]) {
-    const holder=$(id!).parentElement!;
+  for (const [id,label] of [['baseDrop','01 · Nhân vật gốc'],['outfitDrop','02 · Trang phục'],['greenBaseDrop','03 · Base xanh'],['headBaseDrop','04 · Base đầu'],['bodyBaseDrop','05 · Base thân']]) {
+    const holder=$(id!).closest('.flex-col')!;
     holder.classList.add('asset-item');
     holder.querySelector('span')!.textContent=label!;
   }

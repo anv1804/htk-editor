@@ -24,6 +24,9 @@ PROJECT_ROOT = ROOT.parent
 UI_PATH = ROOT / "repair_outfit_ui.html"
 DIST_DIR = ROOT / "dist"
 DEFAULT_BASE_PATH = PROJECT_ROOT / "assets" / "default-base.png"
+DEFAULT_GREEN_BASE_PATH = PROJECT_ROOT / "assets" / "default-green-base.png"
+DEFAULT_HEAD_BASE_PATH = PROJECT_ROOT / "assets" / "default-head-base.png"
+DEFAULT_BODY_BASE_PATH = PROJECT_ROOT / "assets" / "default-body-base.png"
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 
 
@@ -97,7 +100,37 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
 
     base = decode_image(str(payload.get("base", "")))
     outfit = decode_image(str(payload.get("outfit", "")))
-    if max(base.width*base.height, outfit.width*outfit.height) > 4_194_304:
+    green_base = decode_image(payload['greenBase']) if payload.get('greenBase') else None
+    head_base = decode_image(payload['headBase']) if payload.get('headBase') else None
+    body_base = decode_image(payload['bodyBase']) if payload.get('bodyBase') else None
+    green_source = 'uploaded' if green_base is not None else 'none'
+    head_source = 'uploaded' if head_base is not None else 'none'
+    body_source = 'uploaded' if body_base is not None else 'none'
+    if green_base is None and (rows, cols) == (7, 4) and DEFAULT_BASE_PATH.is_file() and DEFAULT_GREEN_BASE_PATH.is_file():
+        with Image.open(DEFAULT_BASE_PATH) as bundled_base:
+            if base.size == bundled_base.size and np.array_equal(
+                    np.asarray(base), np.asarray(bundled_base.convert('RGBA'))):
+                with Image.open(DEFAULT_GREEN_BASE_PATH) as bundled_green:
+                    green_base = bundled_green.convert('RGBA')
+                green_source = 'bundled'
+    if head_base is None and (rows, cols) == (7, 4) and DEFAULT_BASE_PATH.is_file() and DEFAULT_HEAD_BASE_PATH.is_file():
+        with Image.open(DEFAULT_BASE_PATH) as bundled_base:
+            if base.size == bundled_base.size and np.array_equal(
+                    np.asarray(base), np.asarray(bundled_base.convert('RGBA'))):
+                with Image.open(DEFAULT_HEAD_BASE_PATH) as bundled_head:
+                    head_base = bundled_head.convert('RGBA')
+                head_source = 'bundled'
+    if body_base is None and (rows, cols) == (7, 4) and DEFAULT_BASE_PATH.is_file() and DEFAULT_BODY_BASE_PATH.is_file():
+        with Image.open(DEFAULT_BASE_PATH) as bundled_base:
+            if base.size == bundled_base.size and np.array_equal(
+                    np.asarray(base), np.asarray(bundled_base.convert('RGBA'))):
+                with Image.open(DEFAULT_BODY_BASE_PATH) as bundled_body:
+                    body_base = bundled_body.convert('RGBA')
+                body_source = 'bundled'
+    if max(base.width*base.height, outfit.width*outfit.height,
+           green_base.width*green_base.height if green_base else 0,
+           head_base.width*head_base.height if head_base else 0,
+           body_base.width*body_base.height if body_base else 0) > 4_194_304:
         raise ValueError('Sheet must contain at most 4 million pixels')
     def merge_memory(current, saved):
         active=decode_image(payload[current]) if payload.get(current) else None
@@ -142,6 +175,9 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         lock_base=bool(payload.get('lockBase',True)),
         base_profile=decode_image(payload['baseProfile']) if payload.get('baseProfile') else None,
         retouch=retouch,
+        green_base=green_base,
+        head_base=head_base,
+        body_base=body_base,
     )
     opaque_colors = len({p[:3] for p in repaired.get_flattened_data() if p[3]}) if hasattr(repaired, 'get_flattened_data') else len({p[:3] for p in repaired.getdata() if p[3]})
     outfit_layer = np.array(repaired)
@@ -181,7 +217,11 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
         'paletteColors': opaque_colors,
         'mask': encode_png(mask),
         'report': {'version': 6, 'assetVersion': 3, 'paletteColors': opaque_colors, 'baseColorsLocked': True,
-                   'processingRevision': 'source-neckline-25',
+                   'greenBaseSource': green_source,
+                   'headBaseSource': head_source,
+                   'bodyBaseSource': body_source,
+                   'greenMarkerPixels': sum(frame['green_marker_pixels'] for frame in frames),
+                   'processingRevision': 'separate-head-overlay-29',
                    'learning': {**learning_report,'rememberedMaskPixels':remembered_mask,
                                 'rememberedPaintPixels':remembered_paint},
                    'logoCleanup': logo_report,
@@ -189,8 +229,8 @@ def process_request(payload: dict[str, Any]) -> dict[str, Any]:
                        {'id':'base','name':'Base','order':0},
                        {'id':'outfit','name':'Outfit','order':1},
                        {'id':'headwear','name':'Tóc / băng cài / mũ','order':2}],
-                   'skinRemoval': 'diffuse-source-flesh-seeds; covered-equipment-veto; bounded-palm-recovery',
-                   'necklineProtection': 'source-cheek-chroma; continuous-lapels; shared-seam-veto',
+                   'skinRemoval': 'source-marker-aperture; diffuse-flesh-fallback; covered-equipment-veto',
+                   'necklineProtection': 'marker-connected-shadows; enclosed-face-details; source-fabric-boundary',
                    'layerLayout': {'rows':rows,'cols':cols,'frameWidth':cw,'frameHeight':ch,
                                    'trimmed':False,'samePoseLayoutRequired':True,
                                    'hiddenRegionsReconstructed':False},
@@ -251,6 +291,15 @@ class RepairHandler(BaseHTTPRequestHandler):
             return
         if self.path == '/assets/default-base.png' and DEFAULT_BASE_PATH.is_file():
             self.send_bytes(200, 'image/png', DEFAULT_BASE_PATH.read_bytes())
+            return
+        if self.path == '/assets/default-green-base.png' and DEFAULT_GREEN_BASE_PATH.is_file():
+            self.send_bytes(200, 'image/png', DEFAULT_GREEN_BASE_PATH.read_bytes())
+            return
+        if self.path == '/assets/default-head-base.png' and DEFAULT_HEAD_BASE_PATH.is_file():
+            self.send_bytes(200, 'image/png', DEFAULT_HEAD_BASE_PATH.read_bytes())
+            return
+        if self.path == '/assets/default-body-base.png' and DEFAULT_BODY_BASE_PATH.is_file():
+            self.send_bytes(200, 'image/png', DEFAULT_BODY_BASE_PATH.read_bytes())
             return
         self.send_bytes(404, "text/plain; charset=utf-8", b"Not found")
 

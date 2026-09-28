@@ -6,7 +6,8 @@ import { learningKey, readLearning } from './learning-memory';
 export async function currentLearningKey() {
   const g=grid();
   if (!g || !state.base || !state.outfit) return null;
-  return learningKey(state.base.src,state.outfit.src,g.rows,g.cols);
+  const outfitIdentity = state.greenBase ? `${state.outfit.src}\0${state.greenBase.src}` : state.outfit.src;
+  return learningKey(state.base.src,outfitIdentity,g.rows,g.cols);
 }
 
 export async function ensureProfile(force = false) {
@@ -71,6 +72,9 @@ export async function doRepair() {
       headers: { "Content-Type": "application/json" }, 
       body: JSON.stringify({
         base: state.base!.src, 
+        greenBase: state.greenBase?.src,
+        headBase: state.headBase?.src,
+        bodyBase: state.bodyBase?.src,
         outfit: state.outfit!.src, 
         rows: g.rows, 
         cols: g.cols,

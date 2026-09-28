@@ -105,6 +105,48 @@
               <img id="outfitPreview" alt="Outfit">
             </div>
           </div>
+          <div class="flex flex-col col-span-2">
+            <div class="flex justify-between items-center mb-1 text-[10px]">
+              <span class="font-bold text-as-muted uppercase">Base xanh tham chiếu</span>
+              <span id="greenBaseMeta" class="text-as-muted font-mono text-[9px]"></span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div id="greenBaseDrop" class="drop h-16 border border-dashed border-as-border rounded hover:border-as-accent flex-1" tabindex="0">
+                <input id="greenBaseFile" type="file" accept="image/png,image/webp,image/jpeg">
+                <div class="placeholder text-center text-as-muted text-[10px] leading-tight"><span class="text-sm block font-bold">+</span>Tự động</div>
+                <img id="greenBasePreview" alt="Base xanh">
+              </div>
+              <button id="clearGreenBase" type="button" title="Bỏ base xanh" aria-label="Bỏ base xanh">×</button>
+            </div>
+          </div>
+          <div class="flex flex-col col-span-2">
+            <div class="flex justify-between items-center mb-1 text-[10px]">
+              <span class="font-bold text-as-muted uppercase">Base đầu</span>
+              <span id="headBaseMeta" class="text-as-muted font-mono text-[9px]"></span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div id="headBaseDrop" class="drop h-16 border border-dashed border-as-border rounded hover:border-as-accent flex-1" tabindex="0">
+                <input id="headBaseFile" type="file" accept="image/png,image/webp,image/jpeg">
+                <div class="placeholder text-center text-as-muted text-[10px] leading-tight"><span class="text-sm block font-bold">+</span>Tự động</div>
+                <img id="headBasePreview" alt="Base đầu">
+              </div>
+              <button id="clearHeadBase" type="button" title="Bỏ base đầu" aria-label="Bỏ base đầu">×</button>
+            </div>
+          </div>
+          <div class="flex flex-col col-span-2">
+            <div class="flex justify-between items-center mb-1 text-[10px]">
+              <span class="font-bold text-as-muted uppercase">Base thân</span>
+              <span id="bodyBaseMeta" class="text-as-muted font-mono text-[9px]"></span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div id="bodyBaseDrop" class="drop h-16 border border-dashed border-as-border rounded hover:border-as-accent flex-1" tabindex="0">
+                <input id="bodyBaseFile" type="file" accept="image/png,image/webp,image/jpeg">
+                <div class="placeholder text-center text-as-muted text-[10px] leading-tight"><span class="text-sm block font-bold">+</span>Tự động</div>
+                <img id="bodyBasePreview" alt="Base thân">
+              </div>
+              <button id="clearBodyBase" type="button" title="Bỏ base thân" aria-label="Bỏ base thân">×</button>
+            </div>
+          </div>
         </div>
 
         <div class="border border-as-border bg-[#151719] rounded p-2 flex flex-col gap-1.5 shrink-0">

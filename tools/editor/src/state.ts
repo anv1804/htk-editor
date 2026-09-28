@@ -2,6 +2,9 @@ import type { AppState } from './types';
 
 export const state: AppState = { 
   base: null, 
+  greenBase: null,
+  headBase: null,
+  bodyBase: null,
   outfit: null, 
   result: null, 
   mask: null, 

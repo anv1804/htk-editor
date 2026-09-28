@@ -10,11 +10,15 @@ Sau khi **Xử lý sprite**, nhân vật gồm ba PNG cùng kích thước sheet
 
 Các nút **Base / Outfit / Tóc / mũ** phía trên canvas cho phép xem riêng từng lớp. Trong **Xuất ảnh**, tải riêng Base, Outfit và Tóc/mũ; ghép theo thứ tự trên để dựng lại kết quả. Base trong editor là lớp tham chiếu. Ảnh nguồn gốc được giữ lại.
 
+Nếu tạo outfit từ nhân vật có da xanh, giữ **Base** là sprite da chuẩn và chọn ảnh trang phục ở **Outfit**. Khi Base trùng với `assets/default-base.png` và grid là 4 × 7, server tự dùng `assets/default-green-base.png` làm tham chiếu, kể cả khi ô **Base xanh** đang trống hoặc dự án cũ không lưu guide. Ô này chỉ cần nạp khi dùng một cặp base tùy chỉnh. Ba sheet phải cùng kích thước, số hàng/cột và vị trí frame. Trong chế độ cắt da, màu da xanh ở mặt và các đầu chi được tách bằng bảng màu của base xanh; vùng mở được thay bằng pixel da, mắt và viền từ base chuẩn. Mảng vải xanh lớn vẫn thuộc Outfit. Màu đánh dấu xanh nên khác màu vải muốn giữ; chỗ vải cố tình trùng hệt màu da xanh có thể sửa bằng công cụ Giữ Outfit. Base xanh do người dùng nạp được lưu cùng dự án và có thể bỏ bằng nút ×. API/CLI nhận `greenBase`/`--green-base` tương ứng.
+
+Sheet mặc định trong `assets/default-base.png` và `assets/default-green-base.png` là cùng một pose map 4 × 7, 64 × 64 mỗi frame. Khi mở dự án mới, editor tự nạp cả hai; khi mở dự án đã lưu, ảnh nguồn trong dự án được ưu tiên. Thay base cùng kích thước trong editor giữ lại mask và nét tô hiện có, nhưng bản đồ nhận diện base sẽ được tính lại.
+
 Tô màu khi đang xem Outfit hoặc Tóc/mũ sẽ thuộc lớp đang chọn, kể cả pixel mới nằm ngoài hình cũ. Công cụ **Giữ Outfit (U)** và **Giữ tóc / phụ kiện đầu (W)** sửa lại phân loại của pixel nguồn. Undo/redo vẫn áp dụng cho cả mask và nét tô. Nét tô được gộp vào lớp tương ứng khi xuất, không cần lớp thứ tư. Tẩy toàn pixel vẫn có hiệu lực trên bản ghép và các lớp xuất.
 
 Tóc nâu được phân loại riêng trước khi đánh giá vải nâu; màu áo không còn bị suy ra từ tóc. Phần dưới của băng cài theo đường mở của trán trong ảnh nguồn. Tóc dài có thể che cánh tay base, nhưng các viền cổ tay không tự nhập vào tóc. Với chế độ phác màu 32/64, tóc và outfit học bảng màu riêng trong cùng tổng giới hạn màu.
 
-Ở chế độ **Phác màu sắc nét**, các sắc nâu trung gian của tóc được làm tối nhẹ 10%, đồng nhất giữa các frame. Băng cài xanh, phụ kiện sáng, viền tối, màu dùng chung với base/outfit và nét tô thủ công giữ nguyên; giới hạn tổng số màu không tăng. Chế độ giữ sắc độ gốc hoặc không giới hạn màu vẫn giữ màu tóc nguồn.
+Ở chế độ **Phác màu sắc nét**, sắc sáng/tối của vải có màu được tách rõ hơn trên cùng bảng màu toàn sheet; bóng một pixel dưới đường may tối liên tục dùng lại sắc vải đã có. Một số màu vải đầu ra có thể đậm hoặc no hơn màu nguồn, nhưng vẫn nằm trong giới hạn màu đã chọn. Các sắc nâu trung gian của tóc được làm tối nhẹ 10%, đồng nhất giữa các frame. Băng cài xanh, phụ kiện sáng, viền tối, màu dùng chung với base/outfit và nét tô thủ công giữ nguyên. Chế độ giữ sắc độ gốc hoặc không giới hạn màu vẫn giữ màu nguồn.
 
 Logo Gemini được xử lý trước các bước tách lớp. Bộ dò hỗ trợ sai lệch vị trí do thu nhỏ sheet; các vùng không đủ bằng chứng vẫn giữ nguyên. Chi tiết ở [gemini-logo-cleanup.md](gemini-logo-cleanup.md).
 
@@ -23,6 +27,8 @@ API `/api/repair` trả về `baseLayer`, `outfitLayer`, `headwearLayer`, `image
 ## Tái sử dụng tóc và trang phục
 
 Bản `source-neckline-25` bổ sung bảo vệ cổ áo theo ảnh nguồn: so màu viền kem/vàng với da má, nhận dải ve áo liên tục xuống thân và giữ đường may chung. Pixel nhiễu màu trên một nét viền được xét theo hai điểm nối lân cận, không mở rộng vùng cắt theo toàn bộ ngực trần của base. Các vùng cổ thực sự hở vẫn lấy pixel từ base. Kiểm thử có cả tư thế nghiêng và giơ tay của bộ áo tím, cùng các bộ áo kem, tóc, găng và giày.
+
+Bản `green-guide-hand-connectivity-27` đối chiếu marker xanh với base xanh và landmark của base chuẩn. Cụm marker nhỏ ở bàn tay gập được xử lý liền cả bóng xanh tối khi có đủ vùng da đối chiếu và gần lòng bàn tay; mảng vải xanh lớn vẫn được giữ. Vùng cổ tiếp tục dùng aperture hẹp để tránh cắt vào thân áo.
 
 Bản `material-owned-layers-24` phân loại vùng trước khi giảm màu. Dây áo xanh nối với thân áo, kể cả viền tối và viền xám, thuộc Outfit; dây cài đầu rời vẫn có thể thuộc Tóc/mũ. Bảng màu giữ nhóm sắc xanh dương và xanh lá riêng, tránh ép dây áo sang màu băng cài. Kiểm tra mảnh rời được thực hiện lại trên từng lớp cuối cùng; cụm 1–3 pixel không có chỉnh sửa xác nhận được loại bỏ. Vệt thái dương rời dài hơn được kiểm tra thêm theo vị trí vùng mặt và màu viền. Các nét cọ màu thủ công giữ nguyên.
 

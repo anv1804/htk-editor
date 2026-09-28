@@ -323,7 +323,7 @@ export function doRedo() {
 export function remember() {
   try {
     const values = Object.fromEntries(settings.map(id => [id, id === "outline" ? ($<HTMLInputElement>(id)).checked : ($<HTMLInputElement>(id)).value]));
-    sessionStorage.setItem(storageKey, JSON.stringify({ version: 9, values, base: state.base?.src, outfit: state.outfit?.src,
+    sessionStorage.setItem(storageKey, JSON.stringify({ version: 9, values, base: state.base?.src, greenBase: state.greenBase?.src, headBase: state.headBase?.src, bodyBase: state.bodyBase?.src, outfit: state.outfit?.src,
       corrections: state.base ? corrections.toDataURL() : null }));
   } catch (_) { }
   try {

@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from test_layer_composition import fixture
-from repair_outfit_sprite import repair_sheet, repaint, garment_edge_mask
+from repair_outfit_sprite import repair_sheet, repaint, garment_edge_mask, luminance
 
 
 class CutoutWorkflowTests(unittest.TestCase):
@@ -111,6 +111,20 @@ class CutoutWorkflowTests(unittest.TestCase):
         result, _ = repaint(rgba, anatomy, fabric, colors=0, paint=0,
                             outline=True, cell_size=(9, 9), conservative=True)
         np.testing.assert_array_equal(result[4, 2:7], rgba[4, 2:7])
+        np.testing.assert_array_equal(result[anatomy], rgba[anatomy])
+
+    def test_chromatic_cuff_has_cloth_side_contact_outline(self):
+        rgba = np.zeros((16, 16, 4), np.uint8)
+        anatomy = np.zeros((16, 16), bool)
+        fabric = np.zeros_like(anatomy)
+        anatomy[3:13, 3:8] = True
+        fabric[3:13, 8:14] = True
+        rgba[anatomy] = [245, 185, 140, 255]
+        rgba[fabric] = [105, 150, 80, 255]
+        result, contour = repaint(rgba, anatomy, fabric, colors=0, paint=0,
+                                  outline=True, cell_size=(16, 16), conservative=True)
+        self.assertTrue(contour[7, 8])
+        self.assertLess(float(luminance(result[7, 8, :3])), 80)
         np.testing.assert_array_equal(result[anatomy], rgba[anatomy])
 
     def test_manual_keep_reveal_erase_remain_authoritative(self):

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1] / 'tools'))
-from repair_outfit_sprite import coherent_fabric, shade_materials, clean_parallel_outline, repaint, thin_contour, components, fit_source_palette, luminance
+from repair_outfit_sprite import coherent_fabric, shade_materials, clean_parallel_outline, repaint, thin_contour, components, fit_source_palette, luminance, shade_supported_seams
 
 
 class FabricCoherenceTests(unittest.TestCase):
@@ -31,6 +31,40 @@ class FabricCoherenceTests(unittest.TestCase):
                           outline=True,cell_size=(16,16),conservative=True)
         np.testing.assert_array_equal(result[anatomy],rgba[anatomy])
         np.testing.assert_array_equal(result[:,:,3],rgba[:,:,3])
+
+    def test_crisp_mode_gives_green_cloth_more_depth_within_palette_budget(self):
+        rgba=np.zeros((16,16,4),np.uint8)
+        anatomy=np.zeros((16,16),bool); anatomy[4:14,2:4]=True
+        fabric=np.zeros_like(anatomy); fabric[4:14,4:14]=True
+        rgba[anatomy]=[244,175,138,255]
+        rgba[fabric]=[95,130,70,255]
+        rgba[5:7,6:11]=[120,160,92,255]
+        rgba[9:11,5:13]=[70,96,52,255]
+        original,_=repaint(rgba,anatomy,fabric,colors=16,paint=3,
+                           outline=True,cell_size=(16,16),conservative=True)
+        crisp,_=repaint(rgba,anatomy,fabric,colors=16,paint=4,
+                        outline=True,cell_size=(16,16),conservative=True)
+        spread=lambda image:float(luminance(image[5,8,:3])-luminance(image[9,8,:3]))
+        self.assertGreater(spread(crisp),spread(original))
+        self.assertGreater(int(crisp[7,8,1])-int(crisp[7,8,0]),
+                           int(original[7,8,1])-int(original[7,8,0]))
+        np.testing.assert_array_equal(crisp[anatomy],rgba[anatomy])
+        np.testing.assert_array_equal(crisp[:,:,3],rgba[:,:,3])
+        self.assertLessEqual(len(np.unique(crisp[crisp[:,:,3]>0,:3],axis=0)),16)
+
+    def test_continuous_belt_seam_casts_one_pixel_shadow(self):
+        source=np.full((12,12,3),[95,130,70],np.uint8)
+        fabric=np.zeros((12,12),bool); fabric[2:10,2:10]=True
+        source[5,3:9]=[45,65,30]
+        source[8,3:9]=[78,110,55]
+        fill=fabric.copy(); fill[5,3:9]=False
+        result=shade_supported_seams(source,source,fabric,fill,
+            np.zeros_like(fabric),fabric,(12,12))
+        self.assertTrue(np.all(result[6,4:8] == [78,110,55]))
+        np.testing.assert_array_equal(result[4,4:8],source[4,4:8])
+        isolated=source.copy(); isolated[5,3:9]=[95,130,70]; isolated[5,6]=[45,65,30]
+        np.testing.assert_array_equal(shade_supported_seams(isolated,isolated,fabric,fill,
+            np.zeros_like(fabric),fabric,(12,12))[6,6],isolated[6,6])
 
     def test_source_palette_preserves_more_than_two_material_hues(self):
         palette=np.array([[190,45,55],[50,175,75],[45,80,195],[205,170,45],

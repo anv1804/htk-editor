@@ -27,6 +27,9 @@
 .atelier .asset-item .drop { height:114px; min-height:114px; max-height:114px; background:#12151b; border:1px dashed #404657; border-radius:8px; }
 .atelier .asset-item .drop img { padding:8px; }
 .atelier .asset-item .drop:hover { border-color:#b7a7f3; background:#242032; }
+.atelier #greenBaseDrop,.atelier #headBaseDrop,.atelier #bodyBaseDrop { min-width:0; }
+.atelier #clearGreenBase,.atelier #clearHeadBase,.atelier #clearBodyBase { width:28px; height:28px; flex:none; border:1px solid #3a4050; border-radius:5px; color:#aab2c3; background:#242832; font-size:18px; line-height:1; }
+.atelier #clearGreenBase:hover,.atelier #clearHeadBase:hover,.atelier #clearBodyBase:hover { color:#f0eafd; border-color:#a68dde; }
 .atelier .processing-presets { gap:5px; }
 .atelier .processing-presets button { background:#232730; border-color:#3a3e4c; padding:6px 8px; }
 .atelier .as-input,.atelier .as-select { border-color:#363c49; background:#12151c; border-radius:6px; min-height:32px; color:#e0e3ed; font-size:11px; }

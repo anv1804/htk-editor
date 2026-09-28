@@ -34,7 +34,7 @@ export function fillRegion(canvas: HTMLCanvasElement, x: number, y: number) {
   render(); remember();
 }
 
-export function setupWorkflow(setSource: (kind: 'base'|'outfit',url: string)=>Promise<void>) {
+export function setupWorkflow(setSource: (kind: 'base'|'outfit'|'greenBase'|'headBase'|'bodyBase',url: string)=>Promise<void>) {
   const button = (id: string,text: string) => {
     const b=document.createElement('button'); b.id=id; b.textContent=text; return b;
   };
@@ -47,6 +47,9 @@ export function setupWorkflow(setSource: (kind: 'base'|'outfit',url: string)=>Pr
     const values=Object.fromEntries(settings.map(id=>[id,id==='outline' ? ($<HTMLInputElement>(id)).checked : ($<HTMLInputElement>(id)).value]));
     const png=(img:HTMLImageElement)=>{ const c=document.createElement('canvas'); c.width=img.width;c.height=img.height;c.getContext('2d')!.drawImage(img,0,0);return c.toDataURL(); };
     const data={format:'hkt-outfit-project',version:1,base:png(state.base),outfit:png(state.outfit),
+      greenBase:state.greenBase ? png(state.greenBase) : null,
+      headBase:state.headBase ? png(state.headBase) : null,
+      bodyBase:state.bodyBase ? png(state.bodyBase) : null,
       corrections:corrections.toDataURL(),paint:paintLayer.toDataURL(),profile:profileState.key ? baseMap.toDataURL() : null,
       profileKey:profileState.key,values,frame:($('frame') as HTMLInputElement).value};
     const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
@@ -62,7 +65,7 @@ export function setupWorkflow(setSource: (kind: 'base'|'outfit',url: string)=>Pr
       if (p.format!=='hkt-outfit-project' || p.version!==1) throw new Error('Không đúng định dạng dự án Outfit Studio.');
       // Older projects predate the optional logo restoration setting.
       p.values = { ...p.values, logoCleanup: p.values?.logoCleanup ?? 'auto' };
-      const urls=[p.base,p.outfit,p.corrections,p.paint,...(p.profile?[p.profile]:[])];
+      const urls=[p.base,p.outfit,p.corrections,p.paint,...(p.profile?[p.profile]:[]),...(p.greenBase?[p.greenBase]:[]),...(p.headBase?[p.headBase]:[]),...(p.bodyBase?[p.bodyBase]:[])];
       if (urls.some(url=>typeof url!=='string' || !url.startsWith('data:image/png;base64,'))) throw new Error('Dự án phải chứa ảnh PNG nhúng.');
       const images=await Promise.all(urls.map(loadImage));
       const base=images[0]!;
@@ -75,9 +78,31 @@ export function setupWorkflow(setSource: (kind: 'base'|'outfit',url: string)=>Pr
       }
       if (base.width%Number(p.values.cols) || base.height%Number(p.values.rows)) throw new Error('Grid không khớp kích thước ảnh.');
       await setSource('base',p.base); await setSource('outfit',p.outfit);
+      if (p.greenBase) await setSource('greenBase',p.greenBase);
+      else if (state.greenBase) {
+        state.greenBase=null;
+        ($('greenBasePreview') as HTMLImageElement).removeAttribute('src');
+        $('greenBaseDrop').classList.remove('loaded');
+        $('greenBaseMeta').textContent='';
+      }
+      if (p.headBase) await setSource('headBase',p.headBase);
+      else if (state.headBase) {
+        state.headBase=null;
+        ($('headBasePreview') as HTMLImageElement).removeAttribute('src');
+        $('headBaseDrop').classList.remove('loaded');
+        $('headBaseMeta').textContent='';
+      }
+      if (p.bodyBase) await setSource('bodyBase',p.bodyBase);
+      else if (state.bodyBase) {
+        state.bodyBase=null;
+        ($('bodyBasePreview') as HTMLImageElement).removeAttribute('src');
+        $('bodyBaseDrop').classList.remove('loaded');
+        $('bodyBaseMeta').textContent='';
+      }
       for (const id of settings) { if (id==='outline') ($<HTMLInputElement>(id)).checked=p.values[id]; else ($<HTMLInputElement>(id)).value=p.values[id]; }
       correctionContext.drawImage(images[2]!,0,0); paintContext.drawImage(images[3]!,0,0);
-      if (images[4]) { baseMap.width=base.width; baseMap.height=base.height; baseMap.getContext('2d')!.drawImage(images[4],0,0); setProfileState(typeof p.profileKey==='string'?p.profileKey:null,p.base,`${p.values.cols}:${p.values.rows}`); }
+      const savedProfile = p.profile ? images[4] : null;
+      if (savedProfile) { baseMap.width=base.width; baseMap.height=base.height; baseMap.getContext('2d')!.drawImage(savedProfile,0,0); setProfileState(typeof p.profileKey==='string'?p.profileKey:null,p.base,`${p.values.cols}:${p.values.rows}`); }
       ($('frame') as HTMLInputElement).value=String(Math.max(1,Math.min(Number(p.frame)||1,Number(p.values.cols)*Number(p.values.rows))));
       $('colors').dispatchEvent(new Event('change'));
       invalidate('Đã mở dự án. Bấm Xử lý sprite để dựng kết quả.'); render(); remember();
