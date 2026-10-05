@@ -275,7 +275,7 @@ class RepairHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/assets/"):
             dist_file = DIST_DIR / self.path.lstrip("/")
             if dist_file.is_file():
-                mime = "text/javascript" if dist_file.suffix == ".js" else "text/css" if dist_file.suffix == ".css" else "image/svg+xml" if dist_file.suffix == ".svg" else "application/octet-stream"
+                mime = "text/javascript" if dist_file.suffix == ".js" else "text/css" if dist_file.suffix == ".css" else "image/svg+xml" if dist_file.suffix == ".svg" else "image/png" if dist_file.suffix == ".png" else "application/json" if dist_file.suffix == ".json" else "application/octet-stream"
                 self.send_bytes(200, f"{mime}; charset=utf-8", dist_file.read_bytes())
                 return
         if self.path == "/api/health":
@@ -305,7 +305,8 @@ class RepairHandler(BaseHTTPRequestHandler):
         self.send_bytes(404, "text/plain; charset=utf-8", b"Not found")
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path not in ("/api/repair", "/api/base-profile", "/api/ui-forge/generate", "/api/ui-forge/export"):
+        if self.path not in ("/api/repair", "/api/base-profile", "/api/ui-forge/generate", "/api/ui-forge/export",
+                             "/api/map-assets/process", "/api/map-assets/import", "/api/map-assets/export", "/api/map-assets/crop"):
             self.send_bytes(404, "application/json", b'{"error":"Not found"}')
             return
         try:
@@ -313,6 +314,15 @@ class RepairHandler(BaseHTTPRequestHandler):
             if length <= 0 or length > MAX_REQUEST_BYTES:
                 raise ValueError("Upload is empty or larger than 32 MB")
             payload = json.loads(self.rfile.read(length))
+            if self.path.startswith('/api/map-assets/'):
+                from map_asset_pipeline import process, import_zip, export_zip, extract_crop
+                if self.path.endswith('/export'):
+                    self.send_bytes(200, 'application/zip', export_zip(payload))
+                else:
+                    operation = self.path.rsplit('/', 1)[1]
+                    result = {'import': import_zip, 'process': process, 'crop': extract_crop}[operation](payload)
+                    self.send_bytes(200, 'application/json', json.dumps(result).encode('utf-8'))
+                return
             if self.path in ('/api/ui-forge/export', '/api/ui-forge/generate'):
                 import importlib, sys
                 if 'ui_segments' in sys.modules:

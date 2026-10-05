@@ -21,6 +21,11 @@ Mặc định là điện thoại **ngang 16:9**, canvas pixel 640 × 360: phón
 
 ## Ghép và sửa trong editor
 
+Outline của góc, thanh HUD, nút và khung item cố định 1 px. **Độ dày thân khung**
+thay đổi phần thân có màu; **Độ cầu kỳ** thêm vân, nẹp và hoa văn nhỏ;
+**Độ sâu bóng** thay đổi sắc độ trong thân thay vì làm outline dày hơn.
+Thanh HUD và khung item dùng cùng palette, lớp bevel và kiểu góc.
+
 1. **Bộ thành phần** → chọn khung → **Ghép khung** để xem ảnh lắp hoàn chỉnh.
 2. Bấm **Tách khung thành mảnh** để mở tab ghép và thấy từng mảnh riêng. Bảng trúc có ba mảnh; chúng cũng nằm ngay trong thư viện chính.
 3. Chọn một góc, đốt cạnh hoặc nền ở bảng bên phải để vào **Vẽ pixel**.

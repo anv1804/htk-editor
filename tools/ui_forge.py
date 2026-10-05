@@ -10,7 +10,7 @@ import zipfile
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from ui_motifs import unique_assets, PRIMARY_NAMES
-from ui_segments import add_segments, refresh_frames, FRAME_SPECS, placements, inventory_cells, compose, green_palette, btn_corner
+from ui_segments import add_segments, refresh_frames, FRAME_SPECS, placements, inventory_cells, compose, green_palette, btn_corner, decorative_corner
 
 STYLE_DEFAULTS = {
     'bamboo': dict(surface='#14221a', rail='#4c6f30', metal='#d7b96e', outline='#0a100e', gem='#46a082'),
@@ -99,8 +99,8 @@ class Painter:
         result = Image.new('RGBA', im.size)
         if self.s['shadow'] and self.s.get('enableShadow', True):
             sh = Image.new('RGBA', im.size)
-            sh.paste((7, 5, 12, 180), (0, 0), expanded)
-            result.alpha_composite(sh, (min(2, self.s['shadow']), min(2, self.s['shadow'])))
+            sh.paste((*self.ink, min(70, 20 + self.s['shadow'] * 10)), (0, 0), alpha)
+            result.alpha_composite(sh, (1, 1))
         result.paste(self.ink, (0, 0), ImageChops.subtract(expanded, alpha))
         result.alpha_composite(im)
         return result
@@ -121,102 +121,7 @@ class Painter:
         d.line([(x, y - 1) for x, y in points], fill=self.light, width=1)
 
     def corner(self):
-        """Themed L-corner bracket proportionate to frame rails with faceted boss and refined finials."""
-        im = Image.new('RGBA', (28, 28))
-        d = ImageDraw.Draw(im)
-
-        border = self.s.get('border', 5)
-        detail = self.s.get('detail', 2)
-        corner_style = self.s.get('corner', 'cloud' if self.style == 'wood' else ('fret' if self.style == 'jade' else 'leaves'))
-
-        ink = self.ink
-        rail = self.body
-        trim = self.trim
-        light = self.light
-        dark = self.dark
-        gem = self.jewel_col
-
-        # Proportionate arm thickness (matching frame rails) and length
-        T = max(3, min(5, border // 2 + 2))
-        L = 21
-
-        # 1. Base corner body - L-bracket that cleanly embraces the frame corner
-        for y in range(L):
-            for x in range(L):
-                if (x < T or y < T) and max(x, y) < L:
-                    # Chamfer outer corner vertex
-                    if x + y <= 1:
-                        continue
-                    # Outer contour
-                    if x == 0 or y == 0 or (x + y == 2 and x <= 1 and y <= 1):
-                        im.putpixel((x, y), (*ink, 255))
-                    # Inner contour
-                    elif (x == T - 1 and y >= T) or (y == T - 1 and x >= T) or (x == T - 1 and y == T - 1):
-                        im.putpixel((x, y), (*ink, 255))
-                    # Outer highlight
-                    elif x == 1 or y == 1 or (x + y == 3 and x <= 2 and y <= 2):
-                        im.putpixel((x, y), (*light, 255))
-                    # Body fill
-                    else:
-                        col = trim if (x <= 1 or y <= 1 or detail >= 2) else rail
-                        im.putpixel((x, y), (*col, 255))
-
-        # 2. Refined finials at arm ends (clean clasp collar and delicate tip)
-        for ty in range(T):
-            im.putpixel((L - 3, ty), (*ink, 255))
-            im.putpixel((L - 2, ty), (*light, 255))
-            im.putpixel((L - 1, ty), (*trim, 255))
-        for tx in range(T):
-            im.putpixel((tx, L - 3), (*ink, 255))
-            im.putpixel((tx, L - 2), (*light, 255))
-            im.putpixel((tx, L - 1), (*trim, 255))
-
-        if detail >= 1:
-            if self.style == 'bamboo' or corner_style == 'leaves':
-                leaf_col = mix(self.jewel_col, light, 0.3)
-                im.putpixel((L, 1), (*leaf_col, 255))
-                im.putpixel((L + 1, 1), (*light, 255))
-                im.putpixel((1, L), (*leaf_col, 255))
-                im.putpixel((1, L + 1), (*light, 255))
-            elif self.style == 'wood' or corner_style == 'cloud':
-                im.putpixel((L, 0), (*light, 255))
-                im.putpixel((L, 1), (*trim, 255))
-                im.putpixel((L - 1, T), (*trim, 255))
-                im.putpixel((0, L), (*light, 255))
-                im.putpixel((1, L), (*trim, 255))
-                im.putpixel((T, L - 1), (*trim, 255))
-            else: # jade / fret
-                im.putpixel((L, 0), (*light, 255))
-                im.putpixel((L, T - 1), (*ink, 255))
-                im.putpixel((0, L), (*light, 255))
-                im.putpixel((T - 1, L), (*ink, 255))
-
-        # 3. Corner Vertex Faceted Octagonal Jewel Mount
-        P = T + 4
-        cx = P // 2
-        cy = P // 2
-        for y in range(P):
-            for x in range(P):
-                if x + y <= 1 or (P - 1 - x) + y <= 1 or x + (P - 1 - y) <= 1 or (P - 1 - x) + (P - 1 - y) <= 1:
-                    continue
-                if x == 0 or y == 0 or x == P - 1 or y == P - 1 or x + y == 2 or (P - 1 - x) + y == 2 or x + (P - 1 - y) == 2 or (P - 1 - x) + (P - 1 - y) == 2:
-                    im.putpixel((x, y), (*ink, 255))
-                elif x == 1 or y == 1:
-                    im.putpixel((x, y), (*light, 255))
-                elif x == P - 2 or y == P - 2:
-                    im.putpixel((x, y), (*dark, 255))
-                else:
-                    im.putpixel((x, y), (*trim, 255))
-
-        if detail >= 1:
-            im.putpixel((cx, cy), (*gem, 255))
-            im.putpixel((cx - 1, cy), (*mix(gem, (255, 255, 255), 0.4), 255))
-            im.putpixel((cx, cy - 1), (*mix(gem, (255, 255, 255), 0.4), 255))
-            im.putpixel((cx + 1, cy), (*mix(gem, ink, 0.4), 255))
-            im.putpixel((cx, cy + 1), (*mix(gem, ink, 0.4), 255))
-            im.putpixel((cx - 1, cy - 1), (255, 255, 255, 255))
-
-        return im
+        return decorative_corner(self)
 
     def crest(self):
         """Themed 80x44 header crest matching bamboo, wood, and jade with adjustable parameters."""
@@ -365,7 +270,7 @@ def build(s):
         im = Image.new('RGBA', (36, 36))
         c_trans = cap if transform is None else cap.transpose(transform)
         im.alpha_composite(c_trans, (4, 4))
-        add(f'corner-{name}', p.finish(im), 'ornament', name_label=f'Góc chạm {sym} · {style_label}')
+        add(f'corner-{name}', im, 'ornament', name_label=f'Góc chạm {sym} · {style_label}')
     for key,(image,kind) in unique_assets(p,s).items(): add(key,image,kind)
     for key in ('cloud-command','token-command','coin-command','jade-command','scroll-command','lotus-command','bamboo-panel'):
         assets[key]['kind']='ornament'
@@ -385,6 +290,7 @@ def generate(payload):
     else:
         pieces=[f'piece-{s["frameStyle"]}-{part}' for part in ('rail-h','rail-v','corner')]
     primary=pieces+list(FRAME_SPECS)+['joystick-base','joystick-thumb','bar-track','crest','corner-tl','corner-tr','corner-bl','corner-br','background-jade','background-paper','background-cloth']
+    primary=list(dict.fromkeys(primary))
     ordered=primary.copy()
     ordered += [key for key in assets if key not in ordered]
     return {'schema':4,'settings':s,'canvas':canvas_size(payload),'layout':layout(payload,s,assets),'assets':[dict(id=k,width=v['image'].width,height=v['image'].height,

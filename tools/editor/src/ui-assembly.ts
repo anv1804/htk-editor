@@ -50,7 +50,7 @@ export function drawAssembly(ctx:CanvasRenderingContext2D,recipe:Recipe,w:number
   if(recipe.mode==='item'){
     const showBg=recipe.showBg??true;const border=recipe.border??5;
     const thickness=border<=3?1:(border<=5?2:(border<=7?3:4));
-    const cavityStart=2+thickness+1;
+    const cavityStart=recipe.cavity??2+thickness+1;
     if(showBg&&recipe.pieces.bg){
       const bg=get(recipe.pieces.bg);
       if(bg){
@@ -97,8 +97,8 @@ export function drawAssembly(ctx:CanvasRenderingContext2D,recipe:Recipe,w:number
     const cw = 8, ch = 8;
     if((recipe.showBg??false)&&recipe.pieces.bg){
       const bg=get(recipe.pieces.bg);
-      const bw=w-8, bh=h-8;
-      if(bg&&bw>0&&bh>0)dest.drawImage(bg.image,0,0,(bg.image as any).width||32,(bg.image as any).height||32,4,4,bw,bh);
+      const cv=recipe.cavity??4,bw=w-cv*2,bh=h-cv*2;
+      if(bg&&bw>0&&bh>0)dest.drawImage(bg.image,0,0,(bg.image as any).width||32,(bg.image as any).height||32,cv,cv,bw,bh);
     }
     for(let x=cw;x<w-cw;x+=32){
       const length=Math.min(32,w-cw-x);
@@ -144,9 +144,9 @@ export function drawAssembly(ctx:CanvasRenderingContext2D,recipe:Recipe,w:number
     sc.drawImage(targetCanvas, 0, 0);
     sc.globalCompositeOperation = 'source-in';
     const ink = recipe.palette?.[2] ?? [8, 14, 12];
-    sc.fillStyle = `rgba(${ink.join(',')},${Math.min(0.55, (40 + (recipe.shadow ?? 3) * 15) / 255)})`;
+    sc.fillStyle = `rgba(${ink.join(',')},${Math.min(70, 20 + (recipe.shadow ?? 3) * 10) / 255})`;
     sc.fillRect(0, 0, w, h);
-    const offset = recipe.mode === 'item' ? 0 : Math.min(2, recipe.shadow ?? 3);
+    const offset = recipe.mode === 'item' ? 0 : 1;
     ctx.drawImage(shadowCanvas, offset, offset);
     ctx.drawImage(targetCanvas, 0, 0);
   }

@@ -1,0 +1,168 @@
+{
+  "source": "media_1791217455211.jpg",
+  "tileSize": [
+    64,
+    64
+  ],
+  "tileset": {
+    "count": 56,
+    "atlas": "tileset_atlas_64x64.png",
+    "tiles": [
+      "tiles\\tile_r00_c00.png",
+      "tiles\\tile_r00_c01.png",
+      "tiles\\tile_r00_c02.png",
+      "tiles\\tile_r00_c03.png",
+      "tiles\\tile_r00_c04.png",
+      "tiles\\tile_r00_c05.png",
+      "tiles\\tile_r00_c06.png",
+      "tiles\\tile_r00_c07.png",
+      "tiles\\tile_r01_c00.png",
+      "tiles\\tile_r01_c01.png",
+      "tiles\\tile_r01_c02.png",
+      "tiles\\tile_r01_c03.png",
+      "tiles\\tile_r01_c04.png",
+      "tiles\\tile_r01_c05.png",
+      "tiles\\tile_r01_c06.png",
+      "tiles\\tile_r01_c07.png",
+      "tiles\\tile_r02_c00.png",
+      "tiles\\tile_r02_c01.png",
+      "tiles\\tile_r02_c02.png",
+      "tiles\\tile_r02_c03.png",
+      "tiles\\tile_r02_c04.png",
+      "tiles\\tile_r02_c05.png",
+      "tiles\\tile_r02_c06.png",
+      "tiles\\tile_r02_c07.png",
+      "tiles\\tile_r03_c00.png",
+      "tiles\\tile_r03_c01.png",
+      "tiles\\tile_r03_c02.png",
+      "tiles\\tile_r03_c03.png",
+      "tiles\\tile_r03_c04.png",
+      "tiles\\tile_r03_c05.png",
+      "tiles\\tile_r03_c06.png",
+      "tiles\\tile_r03_c07.png",
+      "tiles\\tile_r04_c00.png",
+      "tiles\\tile_r04_c01.png",
+      "tiles\\tile_r04_c02.png",
+      "tiles\\tile_r04_c03.png",
+      "tiles\\tile_r04_c04.png",
+      "tiles\\tile_r04_c05.png",
+      "tiles\\tile_r04_c06.png",
+      "tiles\\tile_r04_c07.png",
+      "tiles\\tile_r05_c00.png",
+      "tiles\\tile_r05_c01.png",
+      "tiles\\tile_r05_c02.png",
+      "tiles\\tile_r05_c03.png",
+      "tiles\\tile_r05_c04.png",
+      "tiles\\tile_r05_c05.png",
+      "tiles\\tile_r05_c06.png",
+      "tiles\\tile_r05_c07.png",
+      "tiles\\tile_r06_c00.png",
+      "tiles\\tile_r06_c01.png",
+      "tiles\\tile_r06_c02.png",
+      "tiles\\tile_r06_c03.png",
+      "tiles\\tile_r06_c04.png",
+      "tiles\\tile_r06_c05.png",
+      "tiles\\tile_r06_c06.png",
+      "tiles\\tile_r06_c07.png"
+    ]
+  },
+  "platforms": {
+    "count": 4,
+    "platforms": [
+      {
+        "id": 1,
+        "file": "platforms\\platform_01_260x271.png",
+        "width": 260,
+        "height": 271
+      },
+      {
+        "id": 2,
+        "file": "platforms\\platform_02_571x274.png",
+        "width": 571,
+        "height": 274
+      },
+      {
+        "id": 3,
+        "file": "platforms\\platform_03_159x163.png",
+        "width": 159,
+        "height": 163
+      },
+      {
+        "id": 4,
+        "file": "platforms\\platform_04_217x269.png",
+        "width": 217,
+        "height": 269
+      }
+    ]
+  },
+  "props": {
+    "count": 6,
+    "props": [
+      {
+        "id": 1,
+        "file": "props\\prop_01_269x200.png",
+        "width": 269,
+        "height": 200
+      },
+      {
+        "id": 2,
+        "file": "props\\prop_02_277x200.png",
+        "width": 277,
+        "height": 200
+      },
+      {
+        "id": 3,
+        "file": "props\\prop_03_219x151.png",
+        "width": 219,
+        "height": 151
+      },
+      {
+        "id": 4,
+        "file": "props\\prop_04_579x200.png",
+        "width": 579,
+        "height": 200
+      },
+      {
+        "id": 5,
+        "file": "props\\prop_05_79x105.png",
+        "width": 79,
+        "height": 105
+      },
+      {
+        "id": 6,
+        "file": "props\\prop_06_59x129.png",
+        "width": 59,
+        "height": 129
+      }
+    ]
+  },
+  "parallax": {
+    "count": 3,
+    "layers": [
+      {
+        "name": "Sky & Clouds",
+        "file": "parallax\\layer_01_sky_clouds.png",
+        "size": [
+          570,
+          165
+        ]
+      },
+      {
+        "name": "Forest & Waterfall",
+        "file": "parallax\\layer_02_forest_waterfall.png",
+        "size": [
+          454,
+          165
+        ]
+      },
+      {
+        "name": "Water & Lotus",
+        "file": "parallax\\layer_03_water_lotus.png",
+        "size": [
+          454,
+          42
+        ]
+      }
+    ]
+  }
+}

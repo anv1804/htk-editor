@@ -78,162 +78,129 @@ def frame_palette(p, style):
 
 
 
-def rail_parts(p, style):
-    """Continuous rails plus a separate corner cap, all at native resolution."""
-    rail, light, ink, trim, gem = frame_palette(p, style)
-    thickness = p.s['border']; top = 6-thickness//2; bottom = top+thickness-1
-    im = Image.new('RGBA', (32, 16)); d = ImageDraw.Draw(im)
-    d.rectangle((0, top - 1, 31, bottom + 1), fill=ink)
-    d.rectangle((0, top, 31, bottom), fill=rail)
-    d.line((0, top, 31, top), fill=light)
-    d.line((0, bottom, 31, bottom), fill=blend(rail, ink, .45))
-    if p.s['texture']:
-        if style == 'wood':
-            d.line([(0, top + 2), (7, top + 2), (10, top + 1), (15, top + 1)], fill=blend(rail, light, .35))
-            d.line([(16, bottom - 1), (20, bottom - 2), (24, bottom - 2), (28, bottom - 1), (31, bottom - 1)], fill=blend(rail, ink, .35))
-        elif style == 'bamboo':
-            d.line((3, top - 1, 3, bottom + 1), fill=ink)
-            d.line((4, top - 1, 4, bottom + 1), fill=trim)
+def frame_layers(p):
+    """One pixel contours; border changes the coloured body, never the outline."""
+    body = max(1, p.s['border'] // 2 - 1)
+    depth = p.s['shadow'] if p.s.get('enableShadow', True) else 0
+    shade = blend(p.rail, p.outline, .18 + depth * .035)
+    hi = blend(p.rail, p.light, .55 + p.s['border'] * .012)
+    middle = [blend(blend(p.rail, p.light, .22), shade, .25)] if body == 1 else [
+        blend(blend(p.rail, p.light, .25), shade, i / (body - 1)) for i in range(body)]
+    return [p.outline, hi, *middle, p.outline]
+
+
+def material_rail(p, style, height=16, inset=0):
+    cols=frame_layers(p); im=Image.new('RGBA',(32,height)); d=ImageDraw.Draw(im)
+    for y,col in enumerate(cols):d.line((0,inset+y,31,inset+y),fill=col)
+    detail=p.s['detail']; inner=inset+len(cols)-2
+    if p.s['texture'] and detail:
+        if style=='bamboo':
+            x=9
+            d.line((x,inset+1,x,inner),fill=blend(p.rail,p.outline,.3))
+            d.line((x+1,inset+1,x+1,inner),fill=blend(p.rail,p.light,.35))
+            if detail>=2:d.point((x+1,inset+1),fill=blend(p.trim,p.light,.35))
+        elif style=='wood':
+            d.line((3,inset+2,10,inset+2),fill=blend(p.rail,p.light,.18))
+            if detail>=2:d.line((19,inner,27,inner),fill=blend(p.rail,p.outline,.2))
         else:
-            d.line((9, top + 1, 15, top + 1), fill=trim)
-            d.point((23, bottom - 1), fill=gem)
-    if p.s['detail'] >= 2:
-        d.line((0, bottom - 1, 31, bottom - 1), fill=blend(rail, trim, .25))
-    cap = Image.new('RGBA', (16, 16))
-    c = ImageDraw.Draw(cap)
-    
-    # Base clean mitered corner intersection
-    c.rectangle((top, top, 15, bottom), fill=rail)
-    c.rectangle((top, top, bottom, 15), fill=rail)
-    c.line([(top - 1, 15), (top - 1, top - 1), (15, top - 1)], fill=ink)
-    c.line([(bottom + 1, 15), (bottom + 1, bottom + 1), (15, bottom + 1)], fill=ink)
-    c.line([(top, 15), (top, top), (15, top)], fill=light)
-    c.line([(bottom, 15), (bottom, bottom), (15, bottom)], fill=blend(rail, ink, 0.45))
-    c.line([(top, top), (bottom, bottom)], fill=blend(rail, ink, 0.25))
-    
-    # Ornate solid corner plate if crest is enabled
-    if p.s.get('crest', True):
-        corner_style = p.s.get('corner', 'cloud' if style == 'wood' else ('fret' if style == 'jade' else 'leaves'))
-        detail = p.s.get('detail', 2)
-        arm_len = min(15, bottom + 3)
-        bx0 = max(0, top - 1)
-        by0 = max(0, top - 1)
+            d.line((4,inset+1,9,inset+1),fill=blend(p.light,p.rail,.25))
+            if detail>=2:d.line((22,inner,26,inner),fill=blend(p.rail,p.gem,.3))
+    if detail>=2 and len(cols)>=5:
+        d.line((0,inner,31,inner),fill=blend(cols[-2],p.trim,.16))
+    if detail>=3 and p.s['crest']:
+        # A fine inlay lies within the rail, leaving both 1px contours intact.
+        d.line((17,inset+2,21,inset+2),fill=blend(p.trim,p.rail,.4))
+        d.point((17,inset+1),fill=blend(p.trim,p.light,.45))
+    return im
 
-        # Solid L-plate body in trim
-        c.rectangle((bx0, by0, arm_len, bottom + 1), fill=trim)
-        c.rectangle((bx0, by0, bottom + 1, arm_len), fill=trim)
 
-        # Outer dark contour and highlight
-        c.line([(bx0, arm_len), (bx0, by0), (arm_len, by0)], fill=ink)
-        c.line([(bx0 + 1, arm_len), (bx0 + 1, by0 + 1), (arm_len, by0 + 1)], fill=light)
+def material_corner(p, size=16, inset=0, decorate=True):
+    cols=frame_layers(p); end=inset+len(cols); im=Image.new('RGBA',(size,size))
+    for y in range(inset,size):
+        for x in range(inset,size):
+            layer=min(x,y)-inset
+            if layer<len(cols):im.putpixel((x,y),(*cols[layer],255))
+    # Single pixel chamfer, without a second outline pass.
+    im.putpixel((inset,inset),(0,0,0,0))
+    im.putpixel((inset+1,inset+1),(*blend(p.rail,p.light,.4),255))
+    d=ImageDraw.Draw(im); detail=p.s['detail']; style=p.s['corner']
+    if decorate and p.s['crest'] and detail:
+        anchor=inset+2; metal=blend(p.trim,p.rail,.38)
+        if style=='leaves':
+            d.line([(inset+1,anchor+2),(anchor+2,inset+1)],fill=metal)
+            if detail>=2:
+                d.polygon([(end-1,end-1),(end+4,end),(end+6,end+3),(end+2,end+2)],fill=p.rail)
+                d.line([(end,end),(end+4,end+2)],fill=blend(p.rail,p.light,.45))
+                d.polygon([(end-1,end),(end,end+5),(end+3,end+7),(end+2,end+2)],fill=p.rail)
+                if detail>=3:d.line([(end,end+1),(end+2,end+5)],fill=blend(p.rail,p.light,.35))
+        elif style=='cloud':
+            d.line([(anchor,anchor+3),(anchor,anchor+1),(anchor+1,anchor),(anchor+3,anchor)],fill=metal)
+            if detail>=2:
+                d.line([(end,end+4),(end,end+1),(end+1,end),(end+4,end),(end+5,end+1),(end+5,end+3),(end+3,end+3)],fill=blend(p.trim,p.rail,.55))
+        elif style=='fret':
+            d.line([(anchor,anchor+2),(anchor,anchor),(anchor+2,anchor)],fill=metal)
+            if detail>=2:d.line([(end,end+4),(end,end),(end+4,end),(end+4,end+2),(end+2,end+2)],fill=blend(p.trim,p.rail,.55))
+        else:
+            d.line([(inset+1,end-2),(end-2,inset+1)],fill=metal)
+        if detail>=3:d.point((anchor,anchor),fill=blend(p.trim,p.light,.4))
+    return im
 
-        # Inner step down
-        c.line([(bottom + 1, arm_len), (bottom + 1, bottom + 1), (arm_len, bottom + 1)], fill=ink)
-        c.line([(bottom, arm_len - 1), (bottom, bottom), (arm_len - 1, bottom)], fill=blend(trim, ink, 0.45))
 
-        # End clasps on the arms
-        c.line([(arm_len, by0), (arm_len, bottom + 1)], fill=light)
-        c.line([(bx0, arm_len), (bottom + 1, arm_len)], fill=light)
+def decorative_corner(p):
+    """A restrained corner ornament using the same bevel and bindings as the rails."""
+    im=material_corner(p,28,4,False); d=ImageDraw.Draw(im)
+    # Taper the ends of the two arms with a slim binding, no square jewel mount.
+    end=4+len(frame_layers(p))-1
+    for x in (23,):
+        d.line((x,5,x,end-1),fill=blend(p.rail,p.outline,.3))
+        d.line((x+1,5,x+1,end-1),fill=blend(p.trim,p.rail,.5))
+        d.line((5,x,end-1,x),fill=blend(p.rail,p.outline,.3))
+        d.line((5,x+1,end-1,x+1),fill=blend(p.trim,p.rail,.5))
+    if not p.s['crest']:return im
+    start=end+1; detail=p.s['detail']; variant=p.s['corner']
+    color=blend(p.trim,p.rail,.55)
+    if variant=='leaves':
+        shapes=[([(start,start),(start+5,start-1),(start+13,start+3),(start+6,start+2)],[(start+2,start),(start+10,start+2)]),
+                ([(start,start+1),(start+5,start+4),(start+10,start+13),(start+5,start+8)],[(start+2,start+3),(start+8,start+10)]),
+                ([(start,start+1),(start-1,start+7),(start+2,start+14),(start+3,start+6)],[(start+1,start+4),(start+1,start+11)])]
+        d.line([(start-2,start-2),(start+2,start+3),(start+5,start+7)],fill=p.dark)
+        for polygon,vein in shapes[:1+min(2,detail)]:
+            d.polygon(polygon,fill=p.rail)
+            d.line(polygon[:3],fill=blend(p.rail,p.outline,.3))
+            if detail:d.line(vein,fill=blend(p.rail,p.light,.48))
+    elif variant=='cloud':
+        d.line([(start,start+9),(start,start+3),(start+2,start),(start+7,start),(start+10,start+3),(start+10,start+7),(start+7,start+9),(start+4,start+7),(start+4,start+4)],fill=color)
+        if detail>=2:d.line([(start+2,start+2),(start+7,start+2),(start+8,start+4)],fill=p.light)
+    elif variant=='fret':
+        d.line([(start,start+11),(start,start),(start+11,start),(start+11,start+7),(start+5,start+7),(start+5,start+4)],fill=color)
+        if detail>=2:d.line([(start+2,start+10),(start+2,start+2),(start+9,start+2)],fill=blend(p.rail,p.light,.4))
+    else:
+        d.line([(start-2,start+5),(start+5,start-2)],fill=color)
+        if detail>=2:d.line([(start,start+6),(start+6,start)],fill=blend(p.rail,p.light,.35))
+    return im
 
-        # Themed engraving on the corner plate
-        if detail >= 1:
-            if corner_style == 'cloud':
-                c.line([(bx0 + 2, by0 + 4), (bx0 + 3, by0 + 2), (bx0 + 5, by0 + 2), (bx0 + 6, by0 + 4), (bx0 + 4, by0 + 5)], fill=light)
-                c.point((bx0 + 3, by0 + 3), fill=blend(trim, ink, 0.6))
-                if arm_len > bottom + 1:
-                    c.point((arm_len - 1, by0 + 2), fill=light)
-                    c.point((bx0 + 2, arm_len - 1), fill=light)
-            elif corner_style == 'fret':
-                c.line([(bx0 + 2, bottom), (bx0 + 2, by0 + 2), (bottom, by0 + 2)], fill=light)
-                c.line([(bx0 + 4, bottom - 1), (bx0 + 4, by0 + 4), (bottom - 1, by0 + 4)], fill=blend(trim, ink, 0.5))
-            elif corner_style == 'cut':
-                c.line([(bx0 + 1, bottom + 1), (bottom + 1, by0 + 1)], fill=light)
-                c.point((bx0 + 2, by0 + 2), fill=ink)
-            else: # leaves
-                c.line([(bx0 + 2, arm_len - 2), (bx0 + 3, by0 + 3), (arm_len - 2, by0 + 2)], fill=light)
-                c.point((bx0 + 4, by0 + 2), fill=blend(trim, ink, 0.5))
-                c.point((bx0 + 2, by0 + 4), fill=blend(trim, ink, 0.5))
 
-        # Central gleaming jewel
-        if detail >= 1:
-            gx = (bx0 + bottom) // 2
-            gy = (by0 + bottom) // 2
-            c.point((gx, gy - 1), fill=trim)
-            c.point((gx - 1, gy), fill=trim)
-            c.point((gx + 1, gy), fill=ink)
-            c.point((gx, gy + 1), fill=ink)
-            c.point((gx, gy), fill=gem)
-            c.point((gx - 1, gy - 1), fill=(255, 255, 255))
-        if detail >= 3:
-            c.point((bx0, by0), fill=(255, 255, 250))
-            
-    return {'rail-h': im, 'rail-v': im.transpose(Image.Transpose.TRANSPOSE), 'corner': cap}
+def rail_parts(p, style):
+    im=material_rail(p,style,inset=3)
+    return {'rail-h':im,'rail-v':im.transpose(Image.Transpose.TRANSPOSE),
+            'corner':material_corner(p,inset=3)}
 
 
 def btn_thickness(p):
-    return max(2, min(5, p.s.get('border', 5) // 2 + 2))
+    return len(frame_layers(p))-3
 
 
 def btn_layers(p, T):
-    """Outer->inner colour of every 1px ring: ink, highlight, body, shade, metal, ink."""
-    ink, rail, trim = p.outline, p.rail, p.trim
-    hi = blend(rail, p.light, .6)
-    shade = blend(rail, ink, .35)
-    body = [rail] * max(0, T - 2) + [shade]
-    return [ink, hi] + body + [trim, ink]
+    return frame_layers(p)
 
 
 def btn_parts(p, style):
-    """Rails styled like the HUD bar: sit flush on the canvas edge so nothing is off-centre."""
-    T = btn_thickness(p); cols = btn_layers(p, T)
-    ink, rail, trim, light = p.outline, p.rail, p.trim, p.light
-    im = Image.new('RGBA', (32, 16)); d = ImageDraw.Draw(im)
-    for o, col in enumerate(cols):
-        d.line((0, o, 31, o), fill=tuple(col) + (255,))
-    if p.s['texture'] and T >= 3:
-        mid = blend(rail, ink, .5)
-        if style == 'bamboo':
-            for x in (7, 23):
-                d.line((x, 1, x, T), fill=mid); d.point((x + 1, 1), fill=trim)
-        elif style == 'wood':
-            d.line((3, 2, 11, 2), fill=blend(rail, light, .3)); d.line((17, T, 27, T), fill=mid)
-        else:
-            d.line((6, 1, 11, 1), fill=blend(light, (255, 255, 255), .5)); d.point((22, 2), fill=p.gem)
-    return {'rail-h': im, 'rail-v': im.transpose(Image.Transpose.TRANSPOSE), 'corner': btn_corner(p, 16)}
+    im=material_rail(p,style)
+    return {'rail-h':im,'rail-v':im.transpose(Image.Transpose.TRANSPOSE),'corner':btn_corner(p)}
 
 
 def btn_corner(p, size=16):
-    """Mitred L-corner with chamfered outside, plus a jewelled boss sized from rail thickness."""
-    T = btn_thickness(p); cols = btn_layers(p, T)
-    ink, trim, gem = p.outline, p.trim, p.gem
-    im = Image.new('RGBA', (size, size))
-    for y in range(size):
-        for x in range(size):
-            o = min(x, y)
-            if o < len(cols): im.putpixel((x, y), tuple(cols[o]) + (255,))
-    for xy in ((0, 0), (1, 0), (0, 1)): im.putpixel(xy, (0, 0, 0, 0))
-    im.putpixel((1, 1), tuple(ink) + (255,))
-    if p.s.get('crest', True):
-        P = T + 6
-        hi = blend(trim, (255, 255, 235), .55); sh = blend(trim, ink, .4)
-        for y in range(P):
-            for x in range(P):
-                if x == 0 or y == 0 or x == P - 1 or y == P - 1: c = ink
-                elif x == 1 or y == 1: c = hi
-                elif x == P - 2 or y == P - 2: c = sh
-                else: c = trim
-                im.putpixel((x, y), tuple(c) + (255,))
-        for xy in ((0, 0), (1, 0), (0, 1), (P - 1, P - 1)): im.putpixel(xy, (0, 0, 0, 0))
-        im.putpixel((1, 1), tuple(ink) + (255,))
-        if p.s.get('detail', 2) >= 1:
-            c = (P - 1) // 2
-            im.putpixel((c, c), tuple(gem) + (255,))
-            im.putpixel((c - 1, c), tuple(blend(gem, (255, 255, 255), .45)) + (255,))
-            im.putpixel((c, c - 1), tuple(blend(gem, (255, 255, 255), .45)) + (255,))
-            im.putpixel((c + 1, c), tuple(blend(gem, ink, .45)) + (255,))
-            im.putpixel((c, c + 1), tuple(blend(gem, ink, .45)) + (255,))
-            im.putpixel((c - 1, c - 1), (255, 255, 255, 255))
-    return im
+    return material_corner(p,size)
 
 
 def btn_backgrounds(p):
@@ -248,68 +215,11 @@ def btn_backgrounds(p):
 
 
 def bar_parts(p, style):
-    """Modular pieces for the sleek HUD bar & button:
-    - piece-bar-rail-h: Repeating horizontal body rail (32x8)
-    - piece-bar-rail-v: Repeating vertical body rail (8x32)
-    - piece-bar-corner: Mitred sleek corner (8x8)
-    - piece-bar-bg: Cavity / text background (32x32)
-    """
-    ink = tuple(p.outline) + (255,)
-    rail = tuple(p.rail) + (255,)
-    light = tuple(p.light) + (255,)
-    trim = tuple(p.trim) + (255,)
-    shade = tuple(p.dark) + (255,)
-
-    # 1. rail-h (32x8)
-    rh = Image.new('RGBA', (32, 8), (0, 0, 0, 0))
-    d = ImageDraw.Draw(rh)
-    d.line((0, 0, 31, 0), fill=ink)
-    d.line((0, 1, 31, 1), fill=light)
-    d.line((0, 2, 31, 2), fill=rail)
-    d.line((0, 3, 31, 3), fill=rail)
-    d.line((0, 4, 31, 4), fill=ink)
-
-    if p.s.get('texture', True):
-        mid = blend(p.rail, p.outline, 0.4) + (255,)
-        if style == 'bamboo':
-            for x in (11, 27):
-                d.line((x, 1, x, 3), fill=mid)
-        elif style == 'wood':
-            d.line((4, 2, 12, 2), fill=blend(p.rail, p.light, 0.3) + (255,))
-            d.line((18, 3, 26, 3), fill=mid)
-        else:
-            d.line((8, 1, 14, 1), fill=blend(p.light, (255, 255, 255), 0.5) + (255,))
-
-    # 2. rail-v (8x32)
-    rv = rh.transpose(Image.Transpose.TRANSPOSE)
-
-    # 3. corner (8x8)
-    corner = Image.new('RGBA', (8, 8), (0, 0, 0, 0))
-    cols = [ink, light, rail, rail, ink]
-    for y in range(8):
-        for x in range(8):
-            o = min(x, y)
-            if o < len(cols):
-                corner.putpixel((x, y), cols[o])
-
-    corner.putpixel((0, 0), (0, 0, 0, 0))
-    corner.putpixel((1, 0), ink)
-    corner.putpixel((0, 1), ink)
-    corner.putpixel((1, 1), ink)
-
-    if p.s.get('crest', True):
-        corner.putpixel((2, 2), trim)
-
-    # 4. bg (32x32)
-    bg_col = dict(bamboo=(13, 23, 19, 230), wood=(25, 17, 13, 230), jade=(11, 23, 28, 230)).get(style, (16, 24, 20, 230))
-    bg = Image.new('RGBA', (32, 32), bg_col)
-
-    return {
-        'rail-h': rh,
-        'rail-v': rv,
-        'corner': corner,
-        'bg': bg,
-    }
+    """Native 8px pieces with the same material treatment as buttons and item slots."""
+    im=material_rail(p,style,height=8)
+    bg=Image.new('RGBA',(32,32),(*blend(p.base,p.outline,.15),255))
+    return {'rail-h':im,'rail-v':im.transpose(Image.Transpose.TRANSPOSE),
+            'corner':material_corner(p,8),'bg':bg}
 
 
 def ornate_ring(size, recipe):
@@ -661,135 +571,11 @@ def _item_shadow(im, ink, shadow, p):
 
 
 def item_parts(p):
-    """Modular item slot parts: rail-h (32x16), rail-v (16x32), corner cap (16x16), and cavity bg (32x32)."""
-    style = p.s.get('frameStyle', 'bamboo')
-    border = p.s.get('border', 5)
-    detail = p.s.get('detail', 2)
-    shadow = p.s.get('shadow', 0)
-    has_crest = p.s.get('crest', True)
-    has_texture = p.s.get('texture', True)
-    corner_type = p.s.get('corner', 'cloud' if style == 'wood' else ('fret' if style == 'jade' else 'leaves'))
-
-    rail = p.rail
-    trim = p.trim
-    ink = p.outline
-    light = p.light
-    dark = p.dark
-    mid = blend(rail, light, 0.25)
-    gem_col = p.jewel_col
-    cavity = p.base
-    cavity_shadow = blend(cavity, ink, 0.6)
-    cavity_light = blend(cavity, light, 0.2)
-
-    thickness = 1 if border <= 3 else (2 if border <= 5 else (3 if border <= 7 else 4))
-    rail_top = 2
-    rail_bot = rail_top + thickness - 1
-
-    # --- 1. Horizontal Rail (piece-item-rail-h: 32x16) ---
-    rail_h = Image.new('RGBA', (32, 16))
-    dh = ImageDraw.Draw(rail_h)
-    dh.line((0, rail_top - 1, 31, rail_top - 1), fill=ink)
-    dh.rectangle((0, rail_top, 31, rail_bot), fill=rail)
-    if detail == 0:
-        pass
-    elif detail == 1:
-        dh.line((0, rail_top, 31, rail_top), fill=light)
-        dh.line((0, rail_bot, 31, rail_bot), fill=dark)
-    else:
-        dh.line((0, rail_top, 31, rail_top), fill=ink)
-        if thickness >= 2:
-            dh.line((0, rail_top + 1, 31, rail_top + 1), fill=light)
-        if thickness >= 3:
-            dh.line((0, rail_bot - 1, 31, rail_bot - 1), fill=mid)
-        dh.line((0, rail_bot, 31, rail_bot), fill=dark)
-    dh.line((0, rail_bot + 1, 31, rail_bot + 1), fill=ink)
-
-    if has_texture and detail >= 2 and thickness >= 2:
-        if style == 'wood':
-            for x in range(2, 31, 5):
-                dh.point((x, rail_top + 1), fill=blend(rail, light, 0.35))
-                if x + 1 < 32:
-                    dh.point((x + 1, rail_top + 1), fill=blend(rail, light, 0.2))
-        elif style == 'jade':
-            for x in range(4, 30, 7):
-                dh.point((x, rail_top + max(1, thickness // 2)), fill=blend(rail, gem_col, 0.28))
-        elif style == 'bamboo':
-            for x in range(3, 31, 8):
-                dh.point((x, rail_top), fill=blend(rail, trim, 0.4))
-
-    # --- 2. Vertical Rail (piece-item-rail-v: 16x32) ---
-    rail_v = rail_h.transpose(Image.Transpose.TRANSPOSE)
-
-    # --- 3. Corner Cap (piece-item-corner: 16x16) ---
-    corner = Image.new('RGBA', (16, 16))
-    dc = ImageDraw.Draw(corner)
-    dc.rectangle((rail_top, rail_top, 15, rail_bot), fill=rail)
-    dc.rectangle((rail_top, rail_top, rail_bot, 15), fill=rail)
-    dc.line([(rail_top - 1, 15), (rail_top - 1, rail_top - 1), (15, rail_top - 1)], fill=ink)
-    dc.line([(rail_bot + 1, 15), (rail_bot + 1, rail_bot + 1), (15, rail_bot + 1)], fill=ink)
-    if detail == 1:
-        dc.line([(rail_top, 15), (rail_top, rail_top), (15, rail_top)], fill=light)
-        dc.line([(rail_bot, 15), (rail_bot, rail_bot), (15, rail_bot)], fill=dark)
-    elif detail >= 2:
-        dc.line([(rail_top, 15), (rail_top, rail_top), (15, rail_top)], fill=ink)
-        if thickness >= 2:
-            dc.line([(rail_top + 1, 15), (rail_top + 1, rail_top + 1), (15, rail_top + 1)], fill=light)
-        dc.line([(rail_bot, 15), (rail_bot, rail_bot), (15, rail_bot)], fill=dark)
-        dc.line([(rail_top, rail_top), (rail_bot, rail_bot)], fill=blend(rail, ink, 0.35))
-
-    if has_crest and detail >= 2:
-        bracket_size = thickness + 2
-        cx, cy = rail_top, rail_top
-        if detail >= 3:
-            for i in range(bracket_size + 2):
-                dc.point((cx + i, cy), fill=trim)
-                dc.point((cx, cy + i), fill=trim)
-            for i in range(1, bracket_size + 1):
-                dc.point((cx + i, cy + 1), fill=trim)
-                dc.point((cx + 1, cy + i), fill=trim)
-            dc.point((cx + bracket_size + 1, cy + 1), fill=ink)
-            dc.point((cx + 1, cy + bracket_size + 1), fill=ink)
-            dc.point((cx, cy), fill=(255, 252, 230))
-            gx, gy = cx + 2, cy + 2
-            dc.point((gx, gy), fill=gem_col)
-            dc.point((gx - 1, gy - 1), fill=(255, 255, 255))
-            dc.point((gx + 1, gy + 1), fill=ink)
-            if corner_type == 'cloud':
-                dc.point((cx + bracket_size + 2, cy), fill=trim)
-                dc.point((cx, cy + bracket_size + 2), fill=trim)
-            elif corner_type == 'fret':
-                dc.point((cx + bracket_size, cy + 2), fill=trim)
-                dc.point((cx + 2, cy + bracket_size), fill=trim)
-        else:
-            for i in range(bracket_size):
-                dc.point((cx + i, cy), fill=trim)
-                dc.point((cx, cy + i), fill=trim)
-            dc.point((cx, cy), fill=light)
-
-    # --- 4. Background / Cavity (piece-item-bg: 32x32) ---
-    bg = Image.new('RGBA', (32, 32), cavity)
-    dbg = ImageDraw.Draw(bg)
-    if has_texture and detail >= 2:
-        for y in range(32):
-            for x in range(32):
-                if (x * 13 + y * 23) % 29 == 0:
-                    dbg.point((x, y), fill=blend(cavity, p.gem, 0.12))
-    if detail >= 1:
-        dbg.line((0, 0, 31, 0), fill=cavity_shadow)
-        dbg.line((0, 0, 0, 31), fill=cavity_shadow)
-        dbg.line((0, 31, 31, 31), fill=cavity_light)
-        dbg.line((31, 0, 31, 31), fill=cavity_light)
-    if detail >= 3:
-        dbg.line((1, 1, 30, 1), fill=blend(cavity, cavity_shadow, 0.45))
-        dbg.line((1, 1, 1, 30), fill=blend(cavity, cavity_shadow, 0.45))
-
-    return {
-        'rail-h': rail_h,
-        'rail-v': rail_v,
-        'corner': corner,
-        'bg': bg,
-    }
-
+    """Item slots share the rail palette, depth and corner language of the HUD bar."""
+    im=material_rail(p,p.style,inset=2)
+    return {'rail-h':im,'rail-v':im.transpose(Image.Transpose.TRANSPOSE),
+            'corner':material_corner(p,inset=2),
+            'bg':Image.new('RGBA',(32,32),(*blend(p.base,p.outline,.15),255))}
 
 
 def tile_sheet(p, family):
@@ -847,13 +633,11 @@ def tile_sheet(p, family):
 
 def bamboo_parts(p):
     rail, light, ink, trim, gem = frame_palette(p, 'bamboo')
-    shade = blend(rail, ink, 0.6)
+    depth=p.s['shadow'] if p.s.get('enableShadow',True) else 0
+    shade = blend(rail, ink, .35 + depth * .04)
     def finish(image,outline=True):
         alpha=image.getchannel('A');expanded=alpha.filter(ImageFilter.MaxFilter(3)) if outline else alpha
         result=Image.new('RGBA',image.size)
-        if p.s.get('shadow') and p.s.get('enableShadow', True):
-            shadow=Image.new('RGBA',image.size);shadow.paste((*ink[:3],min(90,40+p.s['shadow']*15)),(0,0),expanded)
-            offset=min(2,p.s['shadow']);result.alpha_composite(shadow,(offset,offset))
         if outline:result.paste(ink,(0,0),ImageChops.subtract(expanded,alpha))
         result.alpha_composite(image);return result
     horizontal=Image.new('RGBA',(32,16));d=ImageDraw.Draw(horizontal)
@@ -939,7 +723,7 @@ def add_segments(assets,p):
         if family=='bar':
             pieces={'rail-h':'piece-bar-rail-h','rail-v':'piece-bar-rail-v','corner':'piece-bar-corner','bg':'piece-bar-bg'}
             recipe={'family':'bar','cell':8,'mode':'bar','showBg':p.s.get('showBg',False),
-                    'shadow':0,'enableShadow':False,'palette':palette_list,'pieces':pieces}
+                    'cavity':len(frame_layers(p)),'shadow':0,'enableShadow':False,'palette':palette_list,'pieces':pieces}
         elif family=='button':
             T=btn_thickness(p)
             pieces={part:f'piece-btn-{part}' for part in ('rail-h','rail-v','corner')}
@@ -954,8 +738,8 @@ def add_segments(assets,p):
         elif family=='item':
 
             recipe={'family':'item','cell':16,'mode':'item',
-                    'showBg':p.s.get('showBg',True),'border':p.s.get('border',5),
-                    'shadow':shadow_val,'enableShadow':enable_shadow,'palette':palette_list,
+                    'showBg':p.s.get('showBg',True),'border':p.s.get('border',5),'cavity':2+len(frame_layers(p)),
+                    'shadow':0,'enableShadow':False,'palette':palette_list,
                     'pieces':{part:f'piece-item-{part}' for part in ('corner','rail-h','rail-v','bg')}}
         elif style=='bamboo':
             recipe={'family':family,'cell':16,'shadow':shadow_val,'enableShadow':enable_shadow,'palette':palette_list,
@@ -996,7 +780,7 @@ def placements(recipe,w,h):
         show_bg = recipe.get('showBg', True)
         border = recipe.get('border', 5)
         thickness = 1 if border <= 3 else (2 if border <= 5 else (3 if border <= 7 else 4))
-        cavity_start = 2 + thickness + 1
+        cavity_start = recipe.get('cavity', 2 + thickness + 1)
         cw, ch = 16, 16
         if show_bg and 'bg' in parts:
             bw = w - cavity_start * 2
@@ -1020,10 +804,11 @@ def placements(recipe,w,h):
         cw, ch = 8, 8
         show_bg = recipe.get('showBg', False)
         if show_bg and 'bg' in parts:
-            bw = w - 8
-            bh = h - 8
+            cv = recipe.get('cavity', 4)
+            bw = w - cv * 2
+            bh = h - cv * 2
             if bw > 0 and bh > 0:
-                out.append((parts['bg'], 4, 4, bw, bh, False, False))
+                out.append((parts['bg'], cv, cv, bw, bh, False, False))
         for x in range(cw, w - cw, 32):
             length = min(32, w - cw - x)
             if length > 0:
@@ -1112,13 +897,12 @@ def compose(assets,recipe,w,h):
         shadow_val = recipe.get('shadow', 0)
         sh = Image.new('RGBA', (w, h))
         alpha = im.getchannel('A')
-        expanded = alpha.filter(ImageFilter.MaxFilter(3))
-        sh.paste((8, 14, 12, min(90, 40 + shadow_val * 15)), (0, 0), expanded)
+        sh.paste((8, 14, 12, min(70, 20 + shadow_val * 10)), (0, 0), alpha)
         res = Image.new('RGBA', (w, h))
         if recipe.get('mode') == 'item':
             res.alpha_composite(sh, (0, 0))
         else:
-            offset = min(2, shadow_val)
+            offset = 1
             res.alpha_composite(sh, (offset, offset))
         res.alpha_composite(im)
         im = res

@@ -1,0 +1,241 @@
+{
+  "assets_audited": 307,
+  "zip_max_colors": 65,
+  "zip_partial_alpha": 0,
+  "samples": [
+    {
+      "name": "platform",
+      "zip_file": "asset_019.png",
+      "source_crop": [
+        1066,
+        8,
+        1178,
+        69
+      ],
+      "mask_parameters": {
+        "low": 110,
+        "high": 200
+      },
+      "manual_exclusions": [],
+      "mask_iou_vs_zip": 0.93557,
+      "pixels_added_vs_zip": 102,
+      "pixels_removed_vs_zip": 259,
+      "variants": {
+        "source": {
+          "size": [
+            112,
+            61
+          ],
+          "visible_pixels": 6700,
+          "rgb_colors_visible": 6214,
+          "partial_alpha_pixels": 6700
+        },
+        "zip": {
+          "size": [
+            112,
+            61
+          ],
+          "visible_pixels": 5501,
+          "rgb_colors_visible": 64,
+          "partial_alpha_pixels": 0
+        },
+        "detail": {
+          "size": [
+            112,
+            61
+          ],
+          "visible_pixels": 5344,
+          "rgb_colors_visible": 5259,
+          "partial_alpha_pixels": 0
+        },
+        "palette128": {
+          "size": [
+            112,
+            61
+          ],
+          "visible_pixels": 5344,
+          "rgb_colors_visible": 108,
+          "partial_alpha_pixels": 0
+        },
+        "palette48": {
+          "size": [
+            112,
+            61
+          ],
+          "visible_pixels": 5344,
+          "rgb_colors_visible": 40,
+          "partial_alpha_pixels": 0
+        }
+      }
+    },
+    {
+      "name": "gate",
+      "zip_file": "asset_167.png",
+      "source_crop": [
+        599,
+        419,
+        762,
+        573
+      ],
+      "mask_parameters": {
+        "low": 110,
+        "high": 200
+      },
+      "manual_exclusions": [
+        [
+          0,
+          23,
+          9,
+          31
+        ],
+        [
+          160,
+          68,
+          163,
+          76
+        ],
+        [
+          76,
+          151,
+          85,
+          154
+        ],
+        [
+          161,
+          148,
+          163,
+          153
+        ],
+        [
+          162,
+          104,
+          163,
+          106
+        ]
+      ],
+      "mask_iou_vs_zip": 0.87203,
+      "pixels_added_vs_zip": 914,
+      "pixels_removed_vs_zip": 921,
+      "variants": {
+        "source": {
+          "size": [
+            163,
+            154
+          ],
+          "visible_pixels": 20575,
+          "rgb_colors_visible": 18452,
+          "partial_alpha_pixels": 20575
+        },
+        "zip": {
+          "size": [
+            163,
+            154
+          ],
+          "visible_pixels": 13425,
+          "rgb_colors_visible": 64,
+          "partial_alpha_pixels": 0
+        },
+        "detail": {
+          "size": [
+            163,
+            154
+          ],
+          "visible_pixels": 13418,
+          "rgb_colors_visible": 13191,
+          "partial_alpha_pixels": 0
+        },
+        "palette128": {
+          "size": [
+            163,
+            154
+          ],
+          "visible_pixels": 13418,
+          "rgb_colors_visible": 126,
+          "partial_alpha_pixels": 0
+        },
+        "palette48": {
+          "size": [
+            163,
+            154
+          ],
+          "visible_pixels": 13418,
+          "rgb_colors_visible": 48,
+          "partial_alpha_pixels": 0
+        }
+      }
+    },
+    {
+      "name": "bamboo",
+      "zip_file": "asset_158.png",
+      "source_crop": [
+        7,
+        413,
+        90,
+        545
+      ],
+      "mask_parameters": {
+        "low": 110,
+        "high": 200
+      },
+      "manual_exclusions": [],
+      "mask_iou_vs_zip": 0.85392,
+      "pixels_added_vs_zip": 135,
+      "pixels_removed_vs_zip": 1037,
+      "variants": {
+        "source": {
+          "size": [
+            83,
+            132
+          ],
+          "visible_pixels": 10359,
+          "rgb_colors_visible": 9513,
+          "partial_alpha_pixels": 10359
+        },
+        "zip": {
+          "size": [
+            83,
+            132
+          ],
+          "visible_pixels": 7888,
+          "rgb_colors_visible": 64,
+          "partial_alpha_pixels": 0
+        },
+        "detail": {
+          "size": [
+            83,
+            132
+          ],
+          "visible_pixels": 6986,
+          "rgb_colors_visible": 6775,
+          "partial_alpha_pixels": 0
+        },
+        "palette128": {
+          "size": [
+            83,
+            132
+          ],
+          "visible_pixels": 6986,
+          "rgb_colors_visible": 78,
+          "partial_alpha_pixels": 0
+        },
+        "palette48": {
+          "size": [
+            83,
+            132
+          ],
+          "visible_pixels": 6986,
+          "rgb_colors_visible": 35,
+          "partial_alpha_pixels": 0
+        }
+      }
+    }
+  ],
+  "validation": {
+    "same_dimensions_all_variants": true,
+    "same_accepted_mask_all_repaints": true,
+    "binary_alpha_exports": true,
+    "palette_budgets_verified": true,
+    "pixel_art_reconstruction": false,
+    "production_tileset": false
+  }
+}

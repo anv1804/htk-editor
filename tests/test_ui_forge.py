@@ -39,7 +39,7 @@ class UIForgeTests(unittest.TestCase):
                 self.assertLessEqual(h,assets[key]['image'].height)
             image=compose(assets,recipe,173,53)
             self.assertEqual(image.getpixel((86,26))[3],0)
-            self.assertGreater(image.getpixel((86,6))[3],0)
+            self.assertGreater(image.getpixel((86,2))[3],0)
 
     def test_regeneration_keeps_selection_ids_and_native_ring_export(self):
         payload={'settings':{'frameStyle':'wood'},'layout':[{'id':'selected-skill','asset':'frame-skill','width':72,'height':72}]}
@@ -178,6 +178,33 @@ class UIForgeTests(unittest.TestCase):
             self.assertEqual(corner_im.size, (16, 16))
             # The corner must have solid geometry at corner plate (4, 4)
             self.assertGreater(corner_im.getpixel((4, 4))[3], 0)
+
+    def test_modular_contours_stay_one_pixel_when_settings_increase(self):
+        from ui_segments import bar_parts, item_parts, btn_parts
+        for style in ('bamboo','wood','jade'):
+            for border in (3,5,8):
+                for detail in (0,3):
+                    p=forge.Painter(forge.settings({'frameStyle':style,'border':border,'detail':detail,'shadow':5}))
+                    for parts in (bar_parts(p,style),item_parts(p),btn_parts(p,style)):
+                        im=parts['rail-h']
+                        pixels=[im.getpixel((16,y)) for y in range(im.height) if im.getpixel((16,y))[3]]
+                        self.assertEqual(pixels[0][:3],p.outline)
+                        self.assertEqual(pixels[-1][:3],p.outline)
+                        self.assertEqual(sum(c[:3]==p.outline for c in pixels),2)
+
+    def test_bar_settings_change_artwork_without_expanding_outline(self):
+        from ui_segments import bar_parts
+        base={'showBg':False,'frameStyle':'bamboo'}
+        versions=[]
+        for control,value in [('border',8),('detail',3),('shadow',5),('corner','cloud')]:
+            p=forge.Painter(forge.settings({**base,control:value}))
+            versions.append(bar_parts(p,p.style))
+        original=bar_parts(forge.Painter(forge.settings(base)),'bamboo')
+        for parts in versions:
+            self.assertNotEqual(b''.join(v.tobytes() for v in parts.values()),b''.join(v.tobytes() for v in original.values()))
+        shadow=versions[2]
+        self.assertEqual(shadow['rail-h'].getchannel('A').tobytes(),original['rail-h'].getchannel('A').tobytes())
+        self.assertEqual(shadow['corner'].getchannel('A').tobytes(),original['corner'].getchannel('A').tobytes())
 
     def test_unified_palette_and_outline_setting(self):
         # 1. Custom outline and rail propagate
