@@ -1,6 +1,7 @@
-"""Distinct xianxia silhouettes: clouds, bamboo, seals, coins and jade controls."""
-from PIL import Image, ImageDraw
-from ui_segments import green_palette
+import math
+from PIL import Image, ImageDraw, ImageFilter
+from ui_segments import green_palette, blend
+
 
 
 def blank(w,h): return Image.new('RGBA',(w,h))
@@ -154,21 +155,223 @@ def lotus(p):
     return p.finish(im)
 
 
-def joystick(p,thumb=False):
-    green,light,dark,shade=green_palette(p)
-    im=blank(46 if thumb else 116,46 if thumb else 116);d=ImageDraw.Draw(im)
+def joystick(p, thumb=False):
+    style = p.style
+    s = p.s
+    border = s.get('border', 5)
+    detail = s.get('detail', 2)
+    enable_shadow = s.get('enableShadow', True)
+    shadow_val = s.get('shadow', 3) if enable_shadow else 0
+    crest = s.get('crest', True)
+    texture = s.get('texture', True)
+    show_bg = s.get('showBg', True)
+
+    ink = p.ink
+    metal = p.trim
+    rail = p.body
+    gem = p.gem
+    surface = p.base
+    light = p.light
+    dark = p.dark
+
     if thumb:
-        d.ellipse((5,5,33,33),fill=green,outline=light,width=1)
+        size = 46
+        im = Image.new('RGBA', (size, size))
+        cx, cy = 22.5, 22.5
+        r_outer = 18.5
+        rim_w = max(3.0, min(5.5, 2.5 + (border - 3) * 0.5))
+        r_rim = r_outer - rim_w
+        r_gem = 6.0
+
+        for y in range(size):
+            for x in range(size):
+                dx = x - cx
+                dy = y - cy
+                dist = math.hypot(dx, dy)
+                if dist > r_outer:
+                    continue
+                ldot = -(dx + dy) / (dist * 1.4142) if dist > 0 else 0
+
+                if dist >= r_rim:
+                    if dist >= r_outer - 0.9 or dist <= r_rim + 0.7:
+                        im.putpixel((x, y), (*ink, 255))
+                    elif ldot > 0.25:
+                        im.putpixel((x, y), (*light, 255) if ldot > 0.65 else (*metal, 255))
+                    elif ldot < -0.25:
+                        im.putpixel((x, y), (*dark, 255))
+                    else:
+                        im.putpixel((x, y), (*metal, 255))
+                elif dist > r_gem + 1.5:
+                    if ldot > 0.3:
+                        col = blend(rail, light, min(0.65, 0.25 + 0.45 * ldot))
+                    elif ldot < -0.3:
+                        col = blend(rail, dark, min(0.65, 0.25 - 0.45 * ldot))
+                    else:
+                        col = rail
+
+                    if detail >= 1 and abs(dist - (r_rim + r_gem) / 2) < 0.75:
+                        col = blend(col, light if ldot > 0 else dark, 0.35)
+
+                    if texture and (x * 7 + y * 13) % 19 == 0:
+                        col = blend(col, gem, 0.22)
+                    im.putpixel((x, y), (*col, 255))
+                elif dist > r_gem:
+                    collar = metal if ldot >= -0.2 else ink
+                    im.putpixel((x, y), (*collar, 255))
+                else:
+                    g_ldot = -(dx + dy) / (dist * 1.4142) if dist > 0 else 0.7
+                    if g_ldot > 0.3:
+                        col = blend(gem, (255, 255, 255), min(0.7, 0.3 + 0.5 * g_ldot))
+                    elif g_ldot < -0.3:
+                        col = blend(gem, ink, min(0.7, 0.3 - 0.5 * g_ldot))
+                    else:
+                        col = gem
+                    im.putpixel((x, y), (*col, 255))
+
+        dt = ImageDraw.Draw(im)
+        dt.point((int(cx - 2), int(cy - 2)), fill=(255, 255, 255, 255))
+        dt.point((int(cx - 1), int(cy - 2)), fill=(255, 255, 255, 200))
+        dt.point((int(cx - 2), int(cy - 1)), fill=(255, 255, 255, 200))
+
+        if crest:
+            for ox, oy in [(0, -1), (1, 0), (0, 1), (-1, 0)]:
+                px = int(round(cx + ox * (r_gem + 1)))
+                py = int(round(cy + oy * (r_gem + 1)))
+                dt.point((px, py), fill=metal)
+                if ox <= 0 and oy <= 0:
+                    dt.point((px, py), fill=light)
+
+        if shadow_val > 0:
+            sh = Image.new('RGBA', (size, size))
+            alpha = im.getchannel('A')
+            expanded = alpha.filter(ImageFilter.MaxFilter(3))
+            sh.paste((*ink, min(90, 35 + shadow_val * 14)), (0, 0), expanded)
+            res = Image.new('RGBA', (size, size))
+            res.alpha_composite(sh, (0, 0))
+            res.alpha_composite(im, (0, 0))
+            return res
+        return im
+
     else:
-        d.ellipse((6,6,102,102),fill=(*shade,190),outline=light,width=1)
-    return im
+        size = 116
+        im = Image.new('RGBA', (size, size))
+        cx, cy = 57.5, 57.5
+        r_outer = 51.6
+        rim_w = max(4.0, min(9.0, 3.0 + (border - 3) * 1.0))
+        r_inner = r_outer - rim_w
+        r_throw = 30.0
+        r_dead = 14.0
+
+        for y in range(size):
+            for x in range(size):
+                dx = x - cx
+                dy = y - cy
+                dist = math.hypot(dx, dy)
+                if dist > r_outer:
+                    continue
+                ldot = -(dx + dy) / (dist * 1.4142) if dist > 0 else 0
+
+                if dist >= r_inner:
+                    if dist >= r_outer - 1.0 or dist <= r_inner + 0.8:
+                        im.putpixel((x, y), (*ink, 255))
+                    elif dist >= r_outer - 2.2:
+                        if ldot > 0.2: im.putpixel((x, y), (*light, 255))
+                        elif ldot < -0.2: im.putpixel((x, y), (*dark, 255))
+                        else: im.putpixel((x, y), (*metal, 255))
+                    elif dist <= r_inner + 2.0:
+                        if ldot > 0.25: im.putpixel((x, y), (*ink, 220))
+                        elif ldot < -0.25: im.putpixel((x, y), (*light, 190))
+                        else: im.putpixel((x, y), (*dark, 210))
+                    else:
+                        if ldot > 0.3: col = blend(rail, light, 0.4)
+                        elif ldot < -0.3: col = blend(rail, dark, 0.45)
+                        else: col = rail
+                        if texture and (x * 7 + y * 13) % 17 == 0:
+                            col = blend(col, gem if style == 'jade' else metal, 0.25)
+                        im.putpixel((x, y), (*col, 255))
+                elif show_bg:
+                    dish_bg = blend(surface, ink, 0.35)
+                    dish_sh = blend(surface, ink, 0.65)
+                    dish_hi = blend(surface, light, 0.15)
+                    if ldot > 0.25:
+                        col = blend(dish_bg, dish_sh, min(0.55, 0.2 + 0.35 * ldot))
+                    elif ldot < -0.25:
+                        col = blend(dish_bg, dish_hi, min(0.35, 0.1 - 0.25 * ldot))
+                    else:
+                        col = dish_bg
+
+                    if detail >= 1:
+                        if abs(dist - r_throw) < 0.75:
+                            col = blend(col, metal, 0.35 if detail >= 2 else 0.2)
+                        elif detail >= 2 and abs(dist - r_dead) < 0.75:
+                            col = blend(col, gem, 0.3)
+                        elif detail >= 3 and abs(dist - 22.0) < 0.6:
+                            col = blend(col, light, 0.2)
+
+                    if detail >= 2:
+                        if (abs(dx) < 0.75 or abs(dy) < 0.75) and dist > r_dead and dist < r_throw + 4:
+                            if (int(dist) % 4) < 2:
+                                col = blend(col, light if detail >= 3 else metal, 0.3)
+                        elif detail >= 3 and abs(abs(dx) - abs(dy)) < 0.85 and dist > r_dead + 2 and dist < r_throw:
+                            if (int(dist) % 4) < 2:
+                                col = blend(col, gem, 0.25)
+
+                    if texture and (x * 11 + y * 7) % 29 == 0:
+                        col = blend(col, gem, 0.12)
+                    im.putpixel((x, y), (*col, 240))
+
+        db = ImageDraw.Draw(im)
+        if crest:
+            clasp_r = max(2, min(4, int(rim_w / 2)))
+            cardinals = [
+                (57.5, cy - r_outer + rim_w / 2, 0, -1),
+                (cx + r_outer - rim_w / 2, 57.5, 1, 0),
+                (57.5, cy + r_outer - rim_w / 2, 0, 1),
+                (cx - r_outer + rim_w / 2, 57.5, -1, 0),
+            ]
+            for kx, ky, sx, sy in cardinals:
+                ix, iy = int(round(kx)), int(round(ky))
+                if style == 'bamboo':
+                    db.rectangle((ix - clasp_r, iy - clasp_r, ix + clasp_r, iy + clasp_r), fill=metal, outline=ink)
+                    db.point((ix, iy), fill=gem)
+                    db.point((ix - 1, iy - 1), fill=light)
+                elif style == 'wood':
+                    db.ellipse((ix - clasp_r, iy - clasp_r, ix + clasp_r, iy + clasp_r), fill=metal, outline=ink)
+                    db.point((ix, iy), fill=gem)
+                    db.point((ix - 1, iy - 1), fill=light)
+                else: # jade
+                    db.rectangle((ix - clasp_r, iy - clasp_r, ix + clasp_r, iy + clasp_r), fill=metal, outline=ink)
+                    db.point((ix, iy), fill=gem)
+                    db.point((ix - 1, iy - 1), fill=(255, 255, 255))
+
+            if detail >= 2:
+                diag_dist = r_outer - rim_w / 2
+                for angle in [math.pi/4, 3*math.pi/4, 5*math.pi/4, 7*math.pi/4]:
+                    ix = int(round(cx + diag_dist * math.cos(angle)))
+                    iy = int(round(cy + diag_dist * math.sin(angle)))
+                    db.rectangle((ix - 1, iy - 1, ix + 1, iy + 1), fill=metal)
+                    db.point((ix, iy), fill=gem if style == 'jade' else light)
+
+        if shadow_val > 0:
+            sh = Image.new('RGBA', (size, size))
+            alpha = im.getchannel('A')
+            expanded = alpha.filter(ImageFilter.MaxFilter(3))
+            sh.paste((*ink, min(90, 35 + shadow_val * 14)), (0, 0), expanded)
+            res = Image.new('RGBA', (size, size))
+            res.alpha_composite(sh, (0, 0))
+            res.alpha_composite(im, (0, 0))
+            return res
+        return im
 
 
-PRIMARY_NAMES={'cloud-command':'Vân lệnh · mây cuộn','bamboo-panel':'Trúc thư · khung trúc',
- 'token-command':'Môn phái · lệnh bài','coin-command':'Cổ tệ · đồng xu',
- 'jade-command':'Ngọc bội · phù ngọc','scroll-command':'Chiếu thư · cuộn giấy',
- 'lotus-command':'Liên hoa · ô kỹ năng','joystick-base':'Thanh trúc · joystick',
- 'joystick-thumb':'Núm joystick · xanh','bar-track':'Khí mạch · thanh HUD'}
+PRIMARY_NAMES = {'cloud-command': 'Vân lệnh · mây cuộn', 'bamboo-panel': 'Trúc thư · khung trúc',
+ 'token-command': 'Môn phái · lệnh bài', 'coin-command': 'Cổ tệ · đồng xu',
+ 'jade-command': 'Ngọc bội · phù ngọc', 'scroll-command': 'Chiếu thư · cuộn giấy',
+ 'lotus-command': 'Liên hoa · ô kỹ năng', 'joystick-base': 'Bàn xoay điều khiển · joystick',
+ 'joystick-thumb': 'Núm xoay · joystick', 'bar-track': 'Khí mạch · thanh HUD',
+ 'crest': 'Huy hiệu đỉnh · chạm khắc',
+ 'corner-tl': 'Góc chạm ↖ · L-Bracket', 'corner-tr': 'Góc chạm ↗ · L-Bracket',
+ 'corner-bl': 'Góc chạm ↙ · L-Bracket', 'corner-br': 'Góc chạm ↘ · L-Bracket'}
 
 
 def unique_assets(p,s):

@@ -313,6 +313,15 @@ class RepairHandler(BaseHTTPRequestHandler):
             if length <= 0 or length > MAX_REQUEST_BYTES:
                 raise ValueError("Upload is empty or larger than 32 MB")
             payload = json.loads(self.rfile.read(length))
+            if self.path in ('/api/ui-forge/export', '/api/ui-forge/generate'):
+                import importlib, sys
+                if 'ui_segments' in sys.modules:
+                    importlib.reload(sys.modules['ui_segments'])
+                if 'ui_motifs' in sys.modules:
+                    importlib.reload(sys.modules['ui_motifs'])
+                if 'ui_forge' in sys.modules:
+                    importlib.reload(sys.modules['ui_forge'])
+                from ui_forge import generate as generate_ui, export_zip as export_ui_zip
             if self.path == '/api/ui-forge/export':
                 self.send_bytes(200, 'application/zip', export_ui_zip(payload))
                 return

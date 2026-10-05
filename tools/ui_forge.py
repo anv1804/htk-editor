@@ -10,11 +10,17 @@ import zipfile
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from ui_motifs import unique_assets, PRIMARY_NAMES
-from ui_segments import add_segments, refresh_frames, FRAME_SPECS, placements, inventory_cells, compose, green_palette
+from ui_segments import add_segments, refresh_frames, FRAME_SPECS, placements, inventory_cells, compose, green_palette, btn_corner
 
-DEFAULTS = dict(surface='#253f39', metal='#b7975f', gem='#8ab397',
+STYLE_DEFAULTS = {
+    'bamboo': dict(surface='#14221a', rail='#4c6f30', metal='#d7b96e', outline='#0a100e', gem='#46a082'),
+    'wood': dict(surface='#1a1310', rail='#6e4027', metal='#e6b969', outline='#140c09', gem='#d74628'),
+    'jade': dict(surface='#0f1a1a', rail='#2e7270', metal='#dae8ee', outline='#0a1414', gem='#50dcd2')
+}
+
+DEFAULTS = dict(surface='#14221a', rail='#4c6f30', metal='#d7b96e', outline='#0a100e', gem='#46a082',
                 width=216, height=156, border=5, detail=2, shadow=3,
-                corner='cloud', crest=True, texture=True)
+                corner='leaves', crest=True, texture=True, showBg=True, enableShadow=True, frameStyle='bamboo')
 
 
 def settings(payload):
@@ -24,8 +30,13 @@ def settings(payload):
     if not isinstance(source, dict):
         raise ValueError('Cấu hình không hợp lệ.')
     s = DEFAULTS.copy()
-    for key in ('surface', 'metal', 'gem'):
-        value = source.get(key, s[key])
+    if 'frameStyle' in source:
+        if source['frameStyle'] not in ('bamboo', 'wood', 'jade'):
+            raise ValueError('Chất liệu khung không hợp lệ.')
+        s['frameStyle'] = source['frameStyle']
+    style_def = STYLE_DEFAULTS.get(s['frameStyle'], STYLE_DEFAULTS['bamboo'])
+    for key in ('surface', 'metal', 'gem', 'rail', 'outline'):
+        value = source.get(key, style_def.get(key, s.get(key)))
         if not isinstance(value, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
             raise ValueError(f'Màu {key} cần có dạng #RRGGBB.')
         s[key] = value
@@ -35,11 +46,11 @@ def settings(payload):
         if isinstance(value,bool) or not isinstance(value,(float,int)) or not math.isfinite(value) or value != int(value) or not lo <= value <= hi:
             raise ValueError(f'{key} cần là số nguyên trong khoảng {lo}–{hi}.')
         s[key] = int(value)
-    for key in ('crest','texture'):
+    for key in ('crest','texture','showBg','enableShadow'):
         value=source.get(key,s[key])
         if not isinstance(value,bool): raise ValueError(f'{key} cần là true/false.')
         s[key]=value
-    if source.get('corner',s['corner']) not in ('cloud','fret','cut'):
+    if source.get('corner',s['corner']) not in ('cloud','fret','cut','leaves'):
         raise ValueError('Kiểu góc không hợp lệ.')
     s['corner']=source.get('corner',s['corner'])
     return s
@@ -60,78 +71,237 @@ def box(d, xy, color, cut=2):
 
 
 class Painter:
-    def __init__(self,s):
-        self.s=s
-        self.base=rgb(s['surface']); self.metal=rgb(s['metal']); self.gem=rgb(s['gem'])
-        self.ink=mix(self.base,(8,7,12),.78)
-        self.dark=mix(self.metal,self.ink,.62)
-        self.light=mix(self.metal,(255,242,207),.68)
+    def __init__(self, s):
+        self.s = s
+        self.style = s.get('frameStyle', 'bamboo')
+        defaults = STYLE_DEFAULTS.get(self.style, STYLE_DEFAULTS['bamboo'])
+        self.base = rgb(s.get('surface', defaults['surface']))
+        self.surface = self.base
+        self.rail = rgb(s.get('rail', defaults['rail']))
+        self.metal = rgb(s.get('metal', defaults['metal']))
+        self.outline = rgb(s.get('outline', defaults['outline']))
+        self.gem = rgb(s.get('gem', defaults['gem']))
 
-    def finish(self,im):
-        alpha=im.getchannel('A'); expanded=alpha.filter(ImageFilter.MaxFilter(3))
-        result=Image.new('RGBA',im.size)
-        if self.s['shadow']:
-            sh=Image.new('RGBA',im.size); sh.paste((7,5,12,180),(0,0),expanded)
-            result.alpha_composite(sh,(self.s['shadow'],self.s['shadow']))
-        result.paste(self.ink,(0,0),ImageChops.subtract(expanded,alpha))
+        self.ink = self.outline
+        self.trim = self.metal
+        self.body = self.rail
+        self.light = mix(self.rail, (250, 246, 215), .58)
+        self.dark = mix(self.rail, self.ink, .65)
+        self.body_light = mix(self.rail, self.light, .5)
+        self.body_dark = mix(self.rail, self.ink, .62)
+        self.jewel_col = self.gem
+        self.jewel_sec = mix(self.gem, (255, 255, 255), .55)
+        self.jewel_sparkle = (255, 255, 255)
+
+    def finish(self, im):
+        alpha = im.getchannel('A')
+        expanded = alpha.filter(ImageFilter.MaxFilter(3))
+        result = Image.new('RGBA', im.size)
+        if self.s['shadow'] and self.s.get('enableShadow', True):
+            sh = Image.new('RGBA', im.size)
+            sh.paste((7, 5, 12, 180), (0, 0), expanded)
+            result.alpha_composite(sh, (min(2, self.s['shadow']), min(2, self.s['shadow'])))
+        result.paste(self.ink, (0, 0), ImageChops.subtract(expanded, alpha))
         result.alpha_composite(im)
         return result
 
-    def jewel(self,d,x,y,r=5):
-        d.polygon([(x,y-r),(x+r,y),(x,y+r),(x-r,y)],fill=self.dark)
-        d.line([(x-r,y),(x,y-r),(x+r,y)],fill=self.light)
-        r-=2
-        d.polygon([(x,y-r),(x+r,y),(x,y+r),(x-r,y)],fill=self.gem)
-        d.polygon([(x,y-r),(x,y),(x-r,y)],fill=mix(self.gem,(255,222,242),.42))
-        d.polygon([(x,y),(x+r,y),(x,y+r)],fill=mix(self.gem,self.ink,.48))
-        d.point((x,y-r+1),fill=(255,235,226))
+    def jewel(self, d, x, y, r=5, gem_override=None):
+        gem_c = gem_override or self.jewel_col
+        d.polygon([(x, y - r), (x + r, y), (x, y + r), (x - r, y)], fill=self.dark)
+        d.line([(x - r, y), (x, y - r), (x + r, y)], fill=self.light)
+        r2 = max(1, r - 2)
+        d.polygon([(x, y - r2), (x + r2, y), (x, y + r2), (x - r2, y)], fill=gem_c)
+        d.polygon([(x, y - r2), (x, y), (x - r2, y)], fill=mix(gem_c, (255, 255, 255), .42))
+        d.polygon([(x, y), (x + r2, y), (x, y + r2)], fill=mix(gem_c, self.ink, .52))
+        d.point((x, y - r2 + 1), fill=self.jewel_sparkle)
 
-    def engraving(self,d,points):
-        d.line([(x+1,y+1) for x,y in points],fill=self.dark,width=2)
-        d.line(points,fill=self.metal,width=2)
-        d.line([(x,y-1) for x,y in points],fill=self.light,width=1)
+    def engraving(self, d, points):
+        d.line([(x + 1, y + 1) for x, y in points], fill=self.dark, width=2)
+        d.line(points, fill=self.trim, width=2)
+        d.line([(x, y - 1) for x, y in points], fill=self.light, width=1)
 
     def corner(self):
-        im=Image.new('RGBA',(26,26)); d=ImageDraw.Draw(im)
-        d.polygon([(1,1),(24,1),(19,5),(8,5),(5,8),(5,19),(1,24)],fill=self.metal)
-        d.line([(1,23),(1,1),(23,1)],fill=self.light)
-        d.line([(3,18),(3,3),(18,3)],fill=self.dark)
-        if self.s['detail'] and self.s['corner']=='fret':
-            self.engraving(d,[(6,21),(6,11),(11,11),(11,6),(21,6),(21,11),(16,11),(16,16),(11,16)])
-        elif self.s['detail'] and self.s['corner']=='cloud':
-            self.engraving(d,[(5,19),(8,16),(6,12),(7,8),(11,6),(15,8),(16,12),(13,14),(10,12),(11,10)])
-            if self.s['detail']>=2:
-                self.engraving(d,[(15,6),(18,4),(21,6),(20,10),(17,11),(19,15),(23,17)])
-                self.engraving(d,[(6,15),(4,18),(6,21),(10,20),(11,17),(15,19),(17,23)])
-        if self.s['detail']>=2: self.jewel(d,5,5,4)
-        if self.s['detail']==3:
-            for x,y in [(22,12),(12,22),(23,3),(3,23)]: d.point((x,y),fill=self.light)
+        """Themed L-corner bracket proportionate to frame rails with faceted boss and refined finials."""
+        im = Image.new('RGBA', (28, 28))
+        d = ImageDraw.Draw(im)
+
+        border = self.s.get('border', 5)
+        detail = self.s.get('detail', 2)
+        corner_style = self.s.get('corner', 'cloud' if self.style == 'wood' else ('fret' if self.style == 'jade' else 'leaves'))
+
+        ink = self.ink
+        rail = self.body
+        trim = self.trim
+        light = self.light
+        dark = self.dark
+        gem = self.jewel_col
+
+        # Proportionate arm thickness (matching frame rails) and length
+        T = max(3, min(5, border // 2 + 2))
+        L = 21
+
+        # 1. Base corner body - L-bracket that cleanly embraces the frame corner
+        for y in range(L):
+            for x in range(L):
+                if (x < T or y < T) and max(x, y) < L:
+                    # Chamfer outer corner vertex
+                    if x + y <= 1:
+                        continue
+                    # Outer contour
+                    if x == 0 or y == 0 or (x + y == 2 and x <= 1 and y <= 1):
+                        im.putpixel((x, y), (*ink, 255))
+                    # Inner contour
+                    elif (x == T - 1 and y >= T) or (y == T - 1 and x >= T) or (x == T - 1 and y == T - 1):
+                        im.putpixel((x, y), (*ink, 255))
+                    # Outer highlight
+                    elif x == 1 or y == 1 or (x + y == 3 and x <= 2 and y <= 2):
+                        im.putpixel((x, y), (*light, 255))
+                    # Body fill
+                    else:
+                        col = trim if (x <= 1 or y <= 1 or detail >= 2) else rail
+                        im.putpixel((x, y), (*col, 255))
+
+        # 2. Refined finials at arm ends (clean clasp collar and delicate tip)
+        for ty in range(T):
+            im.putpixel((L - 3, ty), (*ink, 255))
+            im.putpixel((L - 2, ty), (*light, 255))
+            im.putpixel((L - 1, ty), (*trim, 255))
+        for tx in range(T):
+            im.putpixel((tx, L - 3), (*ink, 255))
+            im.putpixel((tx, L - 2), (*light, 255))
+            im.putpixel((tx, L - 1), (*trim, 255))
+
+        if detail >= 1:
+            if self.style == 'bamboo' or corner_style == 'leaves':
+                leaf_col = mix(self.jewel_col, light, 0.3)
+                im.putpixel((L, 1), (*leaf_col, 255))
+                im.putpixel((L + 1, 1), (*light, 255))
+                im.putpixel((1, L), (*leaf_col, 255))
+                im.putpixel((1, L + 1), (*light, 255))
+            elif self.style == 'wood' or corner_style == 'cloud':
+                im.putpixel((L, 0), (*light, 255))
+                im.putpixel((L, 1), (*trim, 255))
+                im.putpixel((L - 1, T), (*trim, 255))
+                im.putpixel((0, L), (*light, 255))
+                im.putpixel((1, L), (*trim, 255))
+                im.putpixel((T, L - 1), (*trim, 255))
+            else: # jade / fret
+                im.putpixel((L, 0), (*light, 255))
+                im.putpixel((L, T - 1), (*ink, 255))
+                im.putpixel((0, L), (*light, 255))
+                im.putpixel((T - 1, L), (*ink, 255))
+
+        # 3. Corner Vertex Faceted Octagonal Jewel Mount
+        P = T + 4
+        cx = P // 2
+        cy = P // 2
+        for y in range(P):
+            for x in range(P):
+                if x + y <= 1 or (P - 1 - x) + y <= 1 or x + (P - 1 - y) <= 1 or (P - 1 - x) + (P - 1 - y) <= 1:
+                    continue
+                if x == 0 or y == 0 or x == P - 1 or y == P - 1 or x + y == 2 or (P - 1 - x) + y == 2 or x + (P - 1 - y) == 2 or (P - 1 - x) + (P - 1 - y) == 2:
+                    im.putpixel((x, y), (*ink, 255))
+                elif x == 1 or y == 1:
+                    im.putpixel((x, y), (*light, 255))
+                elif x == P - 2 or y == P - 2:
+                    im.putpixel((x, y), (*dark, 255))
+                else:
+                    im.putpixel((x, y), (*trim, 255))
+
+        if detail >= 1:
+            im.putpixel((cx, cy), (*gem, 255))
+            im.putpixel((cx - 1, cy), (*mix(gem, (255, 255, 255), 0.4), 255))
+            im.putpixel((cx, cy - 1), (*mix(gem, (255, 255, 255), 0.4), 255))
+            im.putpixel((cx + 1, cy), (*mix(gem, ink, 0.4), 255))
+            im.putpixel((cx, cy + 1), (*mix(gem, ink, 0.4), 255))
+            im.putpixel((cx - 1, cy - 1), (255, 255, 255, 255))
+
         return im
 
     def crest(self):
-        im=Image.new('RGBA',(80,44)); d=ImageDraw.Draw(im)
-        for sign in (-1,1):
-            points=[(39+sign*x,y) for x,y in [(5,23),(12,19),(18,21),(23,17),(28,19),(31,22)]]
-            self.engraving(d,points)
-            if self.s['detail']>=2:
-                self.engraving(d,[(39+sign*x,y) for x,y in [(14,26),(18,23),(22,25),(25,24)]])
-        d.polygon([(39,3),(44,11),(43,16),(50,21),(43,28),(39,34),(35,28),(28,21),(35,16),(34,11)],fill=self.dark)
-        d.line([(39,4),(35,12),(36,16),(29,21),(39,33),(49,21),(42,16),(43,12),(39,4)],fill=self.light)
-        self.jewel(d,39,21,9); self.jewel(d,39,10,4)
+        """Themed 80x44 header crest matching bamboo, wood, and jade with adjustable parameters."""
+        im = Image.new('RGBA', (80, 44))
+        d = ImageDraw.Draw(im)
+        cx = 39
+        detail = self.s.get('detail', 2)
+
+        # Symmetrical wings (max x offset 31 so 39+31=70, safely within 80px)
+        for sign in (-1, 1):
+            if self.style == 'bamboo':
+                culm = [(cx + sign * x, y) for x, y in [(5, 21), (11, 18), (17, 20), (22, 17), (27, 19), (31, 22)]]
+                d.line([(x + 1, y + 1) for x, y in culm], fill=self.dark, width=2)
+                d.line(culm, fill=self.trim, width=2)
+                d.line([(x, y - 1) for x, y in culm], fill=self.light, width=1)
+                # Bamboo leaves
+                l1 = [(cx + sign * 11, 17), (cx + sign * 16, 13), (cx + sign * 21, 15), (cx + sign * 15, 18)]
+                l2 = [(cx + sign * 22, 16), (cx + sign * 27, 12), (cx + sign * 31, 15), (cx + sign * 26, 18)]
+                d.polygon(l1, fill=self.body_light)
+                d.line(l1[:3], fill=self.light)
+                d.polygon(l2, fill=self.body_light)
+                d.line(l2[:3], fill=self.light)
+                if detail >= 2:
+                    l3 = [(cx + sign * x, y) for x, y in [(12, 25), (17, 23), (22, 26), (26, 24)]]
+                    d.line(l3, fill=self.trim, width=1)
+                if detail >= 3:
+                    d.point((cx + sign * 21, 15), fill=(255, 255, 255))
+                    d.point((cx + sign * 31, 15), fill=(255, 255, 255))
+            elif self.style == 'wood':
+                pts = [(cx + sign * x, y) for x, y in [(5, 22), (10, 17), (16, 19), (21, 15), (26, 18), (31, 22)]]
+                d.line([(x + 1, y + 1) for x, y in pts], fill=self.dark, width=2)
+                d.line(pts, fill=self.trim, width=2)
+                d.line([(x, y - 1) for x, y in pts], fill=self.light, width=1)
+                if detail >= 2:
+                    pts2 = [(cx + sign * x, y) for x, y in [(11, 26), (16, 23), (21, 25), (25, 24)]]
+                    d.line(pts2, fill=self.light, width=1)
+                    d.line([(x, y + 1) for x, y in pts2], fill=self.dark, width=1)
+                if detail >= 3:
+                    d.point((cx + sign * 21, 15), fill=self.light)
+                    d.point((cx + sign * 31, 22), fill=(255, 255, 255))
+            else:  # jade
+                pts = [(cx + sign * x, y) for x, y in [(5, 21), (11, 17), (16, 19), (21, 15), (26, 18), (31, 21)]]
+                d.line([(x + 1, y + 1) for x, y in pts], fill=self.dark, width=2)
+                d.line(pts, fill=self.trim, width=2)
+                d.line([(x, y - 1) for x, y in pts], fill=self.light, width=1)
+                # Inlaid jade feathers
+                f1 = [(cx + sign * 11, 16), (cx + sign * 16, 11), (cx + sign * 21, 14), (cx + sign * 15, 18)]
+                f2 = [(cx + sign * 22, 14), (cx + sign * 27, 10), (cx + sign * 31, 13), (cx + sign * 26, 17)]
+                d.polygon(f1, fill=self.body)
+                d.line(f1[:3], fill=self.light)
+                d.polygon(f2, fill=self.body)
+                d.line(f2[:3], fill=self.light)
+                if detail >= 2:
+                    pts2 = [(cx + sign * x, y) for x, y in [(11, 26), (16, 23), (21, 25), (26, 23)]]
+                    d.line(pts2, fill=self.light, width=1)
+                if detail >= 3:
+                    d.point((cx + sign * 16, 11), fill=(255, 255, 255))
+                    d.point((cx + sign * 27, 10), fill=(255, 255, 255))
+
+        # Central Cartouche Medallion
+        cart = [(cx, 3), (cx + 5, 11), (cx + 4, 16), (cx + 11, 21), (cx + 4, 28), (cx, 34),
+                (cx - 4, 28), (cx - 11, 21), (cx - 4, 16), (cx - 5, 11)]
+        d.polygon(cart, fill=self.body_dark)
+        d.line(cart + [cart[0]], fill=self.dark, width=2)
+        d.line([(cx, 4), (cx - 4, 11), (cx - 4, 16), (cx - 10, 21), (cx, 33), (cx + 10, 21), (cx + 4, 16), (cx + 4, 11), (cx, 4)], fill=self.light)
+
+        # Central Jewels
+        if detail >= 1:
+            self.jewel(d, cx, 21, 8, self.jewel_col)
+            self.jewel(d, cx, 10, 4, self.jewel_sec)
+
         return self.finish(im)
 
     def frame(self,w,h,state='normal',small=False):
         im=Image.new('RGBA',(w,h)); d=ImageDraw.Draw(im)
         off=1 if state=='pressed' else 0
         x,y,r,b=4,4+off,w-9,h-9+off
-        layers=[self.dark,self.light,self.metal,self.dark,self.ink,self.metal,self.dark,self.ink]
+        layers=[self.ink,self.light,self.trim,self.dark,self.ink,self.trim,self.dark,self.ink]
         n=min(self.s['border'],(r-x-4)//2,(b-y-4)//2)
         for i in range(n):
             box(d,(x+i,y+i,r-i,b-i),layers[i],max(1,4-i//2))
-        fill=mix(self.base,(255,213,244),.13) if state=='hover' else mix(self.base,self.ink,.32) if state=='pressed' else self.base
+        fill=mix(self.body,(255,255,230),.18) if state=='hover' else mix(self.body,self.ink,.35) if state=='pressed' else self.body
         box(d,(x+n,y+n,r-n,b-n),fill,2)
         d.line([(x+2,b-3),(x+2,y+2),(r-3,y+2)],fill=self.light)
-        d.line([(x+3,b-1),(r-1,b-1),(r-1,y+3)],fill=self.dark)
+        d.line([(x+3,b-1),(r-1,b-1),(r-1,y+3)],fill=self.ink)
         # Quantized surface sheen, entirely inside the frame.
         if self.s['texture']:
             for yy in range(y+n+3,b-n-2):
@@ -140,7 +310,7 @@ class Painter:
             for xx,yy in [(x+n+2,y+n+2),(r-n-9,b-n-9)]:
                 for dy in range(7):
                     for dx in range(7-dy):
-                        if (dx+dy)%2==0: d.point((xx+dx,yy+dy),fill=mix(fill,self.metal,.10))
+                        if (dx+dy)%2==0: d.point((xx+dx,yy+dy),fill=mix(fill,self.trim,.10))
         if not small and self.s['detail']:
             cap=self.corner()
             im.alpha_composite(cap,(x,y))
@@ -150,7 +320,7 @@ class Painter:
         else:
             for cx,cy in [(x+3,y+3),(r-3,y+3),(x+3,b-3),(r-3,b-3)]:
                 d.point((cx,cy),fill=self.light)
-                d.point((cx+1,cy+1),fill=self.metal)
+                d.point((cx+1,cy+1),fill=self.trim)
         if small and self.s['detail']:
             self.jewel(d,x+5,(y+b)//2,3); self.jewel(d,r-5,(y+b)//2,3)
         result=self.finish(im)
@@ -163,8 +333,10 @@ class Painter:
 
 def build(s):
     p=Painter(s); assets={}
-    def add(name,im,kind,margin=None):
-        assets[name]={'image':im,'kind':kind,'margins':margin}
+    def add(name,im,kind,margin=None,name_label=None):
+        entry={'image':im,'kind':kind,'margins':margin}
+        if name_label: entry['name']=name_label
+        assets[name]=entry
     add('panel',p.frame(s['width'],s['height']),'panel',[32]*4)
     for state in ('normal','hover','pressed','disabled'):
         add(f'button-{state}',p.frame(112,36,state,True),'button',[19,14,19,14])
@@ -181,18 +353,19 @@ def build(s):
             yy=1 if direction=='down' else -1
             d.line([(10,14-yy*3),(14,14+yy*2),(18,14-yy*3)],fill=p.light,width=2)
         add(f'icon-{direction}',im,'icon')
-    track=Image.new('RGBA',(164,24));td=ImageDraw.Draw(track);green,light,dark,shade=green_palette(p)
-    td.rectangle((5,5,153,16),outline=green,width=2);td.line([(5,15),(5,5),(152,5)],fill=light)
-    add('bar-track',p.finish(track),'bar')
     for name,color in [('health',(172,66,77)),('mana',(70,139,166)),('cultivation',p.gem)]:
         im=Image.new('RGBA',(164,24));d=ImageDraw.Draw(im)
         for y in range(9,13): d.line((17,y,136,y),fill=mix(color,p.light,.4) if y==9 else mix(color,p.ink,.3) if y==12 else color)
         add(f'bar-{name}-fill',im,'fill')
-    add('crest',p.crest() if s['crest'] else Image.new('RGBA',(80,44)),'ornament')
-    cap=p.corner()
-    for name,transform in [('tl',None),('tr',Image.Transpose.FLIP_LEFT_RIGHT),('bl',Image.Transpose.FLIP_TOP_BOTTOM),('br',Image.Transpose.ROTATE_180)]:
-        im=Image.new('RGBA',(36,36));im.alpha_composite(cap if transform is None else cap.transpose(transform),(2,2))
-        add(f'corner-{name}',p.finish(im),'ornament')
+    style_label = dict(bamboo='Trúc', wood='Gỗ', jade='Ngọc').get(s['frameStyle'], 'Trúc')
+    add('crest', p.crest() if s['crest'] else Image.new('RGBA', (80, 44)), 'ornament', name_label=f'Huy hiệu đỉnh · {style_label}')
+    cap = p.corner()
+    for name, transform, sym in [('tl', None, '↖'), ('tr', Image.Transpose.FLIP_LEFT_RIGHT, '↗'),
+                                ('bl', Image.Transpose.FLIP_TOP_BOTTOM, '↙'), ('br', Image.Transpose.ROTATE_180, '↘')]:
+        im = Image.new('RGBA', (36, 36))
+        c_trans = cap if transform is None else cap.transpose(transform)
+        im.alpha_composite(c_trans, (4, 4))
+        add(f'corner-{name}', p.finish(im), 'ornament', name_label=f'Góc chạm {sym} · {style_label}')
     for key,(image,kind) in unique_assets(p,s).items(): add(key,image,kind)
     for key in ('cloud-command','token-command','coin-command','jade-command','scroll-command','lotus-command','bamboo-panel'):
         assets[key]['kind']='ornament'
@@ -207,7 +380,11 @@ def png(im):
 def generate(payload):
     s=settings(payload); assets=build(s)
     apply_edits(payload,assets)
-    primary=['piece-bamboo-horizontal','piece-bamboo-vertical','piece-bamboo-leaves']+list(FRAME_SPECS)+['joystick-base','joystick-thumb','bar-track','background-jade','background-paper','background-cloth']
+    if s['frameStyle']=='bamboo':
+        pieces=['piece-bamboo-horizontal','piece-bamboo-vertical','piece-bamboo-leaves']
+    else:
+        pieces=[f'piece-{s["frameStyle"]}-{part}' for part in ('rail-h','rail-v','corner')]
+    primary=pieces+list(FRAME_SPECS)+['joystick-base','joystick-thumb','bar-track','crest','corner-tl','corner-tr','corner-bl','corner-br','background-jade','background-paper','background-cloth']
     ordered=primary.copy()
     ordered += [key for key in assets if key not in ordered]
     return {'schema':4,'settings':s,'canvas':canvas_size(payload),'layout':layout(payload,s,assets),'assets':[dict(id=k,width=v['image'].width,height=v['image'].height,
@@ -263,11 +440,14 @@ def layout(payload, s, assets):
     result=[]
     for i,n in enumerate(nodes):
         if not isinstance(n,dict) or n.get('asset') not in assets: raise ValueError('Thành phần không hợp lệ.')
-        item={'id':f'node{i}','asset':n['asset']}
+        node_id=n.get('id',f'node{i}')
+        if not isinstance(node_id,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}',node_id):
+            raise ValueError('Mã thành phần không hợp lệ.')
+        item={'id':node_id,'asset':n['asset']}
         asset=assets[n['asset']]
         for dim,limit,base in [('width',screen[0],asset['image'].width),('height',screen[1],asset['image'].height)]:
             val=n.get(dim,base)
-            minimum=(184 if dim=='width' else 156) if n['asset']=='inventory-board' else 32
+            minimum=(184 if dim=='width' else 156) if n['asset']=='inventory-board' else (16 if n['asset']=='bar-track' and dim=='height' else 32)
             if isinstance(val,bool) or not isinstance(val,int) or not minimum<=val<=limit:
                 if 'recipe' in asset or n['asset']=='joystick-base':raise ValueError('Kích thước khung vượt giới hạn màn hình.')
                 val=base
@@ -283,7 +463,8 @@ def layout(payload, s, assets):
             extent=item['width'] if axis=='x' else item['height']
             item[axis]=max(0,min(limit-extent,round(val)))
         if 'label' in n and n['asset']!='frame-skill':
-            if not isinstance(n['label'],str) or len(n['label'])>64: raise ValueError('Nhãn tối đa 64 ký tự.')
+            limit = 512 if n['asset'] == 'text-panel' else 64
+            if not isinstance(n['label'],str) or len(n['label'])>limit: raise ValueError(f'Nhãn tối đa {limit} ký tự.')
             item['label']=n['label']
         if 'fill' in n:
             if n['fill'] not in ('bar-health-fill','bar-mana-fill','bar-cultivation-fill') or n['asset']!='bar-track': raise ValueError('Thanh trạng thái không hợp lệ.')
@@ -357,18 +538,34 @@ def godot_scene(nodes,assets,screen=None):
             if kind=='Button':lines.extend(button_style())
             else:lines.append('mouse_filter = 2')
             parent=f'Root/Element{i}';pieces(parent,recipe,w,h)
+            if 'fill' in n:
+                lines.extend(['',f'[node name="Progress" type="TextureProgressBar" parent="{parent}"]',
+                              'offset_left = 6.0','offset_top = 4.0',
+                              f'offset_right = {float(w - 6)}',f'offset_bottom = {float(h - 4)}',
+                              f'texture_progress = ExtResource("{n["fill"]}")',
+                              f'value = {float(n["value"])}','mouse_filter = 2'])
             if recipe.get('inventory'):
                 for j,(sx,sy,sw,sh) in enumerate(inventory_cells(w,h)):
                     lines.extend(['',f'[node name="Slot{j}" type="Button" parent="{parent}"]',
                                   f'offset_left = {float(sx)}',f'offset_top = {float(sy)}',f'offset_right = {float(sx+sw)}',f'offset_bottom = {float(sy+sh)}']+button_style())
                     pieces(f'{parent}/Slot{j}',assets['frame-item']['recipe'],sw,sh)
             if n.get('label'):
-                lines.extend(['',f'[node name="Caption" type="Label" parent="{parent}"]',
-                              f'offset_right = {float(w)}',f'offset_bottom = {float(38 if recipe.get("inventory") else h)}',
-                              'mouse_filter = 2','horizontal_alignment = 1','vertical_alignment = 1',
-                              'theme_override_font_sizes/font_size = 10',
-                              'theme_override_colors/font_color = Color(0.86, 0.9, 0.79, 1)',
-                              f'text = {json.dumps(n["label"],ensure_ascii=False)}'])
+                if key == 'text-panel':
+                    lines.extend(['',f'[node name="Caption" type="Label" parent="{parent}"]',
+                                  'offset_left = 14.0', 'offset_top = 12.0',
+                                  f'offset_right = {float(w - 14)}', f'offset_bottom = {float(h - 12)}',
+                                  'mouse_filter = 2', 'horizontal_alignment = 0', 'vertical_alignment = 0',
+                                  'autowrap_mode = 2',
+                                  'theme_override_font_sizes/font_size = 11',
+                                  'theme_override_colors/font_color = Color(0.91, 0.93, 0.85, 1)',
+                                  f'text = {json.dumps(n["label"],ensure_ascii=False)}'])
+                else:
+                    lines.extend(['',f'[node name="Caption" type="Label" parent="{parent}"]',
+                                  f'offset_right = {float(w)}',f'offset_bottom = {float(38 if recipe.get("inventory") else h)}',
+                                  'mouse_filter = 2','horizontal_alignment = 1','vertical_alignment = 1',
+                                  'theme_override_font_sizes/font_size = 10',
+                                  'theme_override_colors/font_color = Color(0.86, 0.9, 0.79, 1)',
+                                  f'text = {json.dumps(n["label"],ensure_ascii=False)}'])
         elif key=='joystick-base':
             lines.append(f'scale = Vector2({w/116}, {h/116})')
             lines += ['script = ExtResource("joystick_script")',
@@ -423,7 +620,7 @@ def export_zip(payload):
     scene_nodes=[]
     for n in nodes:
         item=n.copy();asset=assets[n['asset']];recipe=asset.get('recipe',{})
-        if recipe.get('mode') in ('circle','outline'):
+        if recipe.get('mode') in ('circle','ornate','outline'):
             w,h=n['width'],n['height'];key=f'{n["asset"]}-native-{w}x{h}';texture=f'{key}-texture'
             assets[texture]={'image':compose(assets,recipe,w,h),'kind':'piece','margins':None}
             assets[key]={**asset,'image':assets[texture]['image'],'recipe':{'family':recipe['family'],'cell':16,'mode':'ring','pieces':{'ring':texture}}}
@@ -436,6 +633,22 @@ def export_zip(payload):
     result=io.BytesIO()
     with zipfile.ZipFile(result,'w',zipfile.ZIP_DEFLATED) as z:
         for key,v in assets.items(): z.writestr(f'ui_forge/{key}.png',png(v['image']))
+        panel_recipe = assets.get('frame-panel', {}).get('recipe')
+        if panel_recipe and 'pieces' in panel_recipe:
+            piece_keys = [k for k in panel_recipe['pieces'].values() if k in assets]
+            if piece_keys:
+                strip_w = sum(assets[k]['image'].width for k in piece_keys)
+                strip_h = max(assets[k]['image'].height for k in piece_keys)
+                strip_img = Image.new('RGBA', (strip_w, strip_h), (0, 0, 0, 0))
+                cur_x = 0
+                slice_lines = [f"# Godot 4 AtlasTexture Rect2 Slices ({strip_w}x{strip_h})"]
+                for k in piece_keys:
+                    part_img = assets[k]['image']
+                    strip_img.paste(part_img, (cur_x, 0), part_img)
+                    slice_lines.append(f"{k}: Rect2({cur_x}, 0, {part_img.width}, {part_img.height})")
+                    cur_x += part_img.width
+                z.writestr('ui_forge/frame-pieces-strip.png', png(strip_img))
+                z.writestr('ui_forge/frame-pieces-slices.txt', '\n'.join(slice_lines) + '\n')
         z.writestr('ui_forge/theme.tres',godot_theme(assets))
         z.writestr('ui_forge/HUD.tscn',godot_scene(scene_nodes,assets,screen))
         z.writestr('ui_forge/joystick.gd',JOYSTICK_SCRIPT)
