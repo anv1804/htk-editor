@@ -4,6 +4,7 @@ import { setupWorkspace } from './workspace';
 import { setupStudio } from './studio';
 import { setupWorkflow, fillRegion } from './workflow';
 import { setupItemStudio } from './item-studio';
+import { setupUIStudio } from './ui-studio';
 import { state, corrections, correctionContext, baseMap, baseMapContext, paintLayer, paintContext, profileState, storageKey, setProfileState } from './state';
 import { $, status, readFile, loadImage, download } from './utils';
 import { doRepair, ensureProfile, currentLearningKey } from './api';
@@ -17,6 +18,7 @@ setupStudio();
 setupWorkflow(setSource);
 setupWorkspace();
 setupItemStudio();
+setupUIStudio();
 (window as any).__onRender = () => {
   updateFrameThumbnails();
   if (!isPlaying) renderLivePlayerFrame(Number(($("frame") as HTMLInputElement).value) || 1);

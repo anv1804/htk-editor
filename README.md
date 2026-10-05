@@ -77,6 +77,14 @@ python3 tools/repair_outfit_sprite.py \
 
 ### Local UI
 
+The **Xưởng UI / HUD** button (`Alt+U`) opens a procedural interface designer:
+assemble mobile HUDs from separate 16px corners, repeating edges and backgrounds.
+Panel, button, skill, item and inventory frames resize without stretching corners.
+Edit each shared piece in the pixel editor, arrange a 16:9 phone layout, and export
+Godot scenes with individual pieces, real buttons and a touch joystick. Cloud,
+coin and jade motifs are decorations. Designs reopen from JSON. See
+[UI Forge](docs/ui-forge.md) and the [v2 UI research and component checklist](docs/ui-research-v2.md).
+
 Run the browser interface with:
 
 ```bash

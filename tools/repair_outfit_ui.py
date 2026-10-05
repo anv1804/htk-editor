@@ -17,6 +17,7 @@ from PIL import Image
 import numpy as np
 
 from repair_outfit_sprite import repair_sheet, build_base_profile, base_profile_identity, foreground_mask
+from ui_forge import generate as generate_ui, export_zip as export_ui_zip
 
 
 ROOT = Path(__file__).resolve().parent
@@ -304,7 +305,7 @@ class RepairHandler(BaseHTTPRequestHandler):
         self.send_bytes(404, "text/plain; charset=utf-8", b"Not found")
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path not in ("/api/repair", "/api/base-profile"):
+        if self.path not in ("/api/repair", "/api/base-profile", "/api/ui-forge/generate", "/api/ui-forge/export"):
             self.send_bytes(404, "application/json", b'{"error":"Not found"}')
             return
         try:
@@ -312,6 +313,12 @@ class RepairHandler(BaseHTTPRequestHandler):
             if length <= 0 or length > MAX_REQUEST_BYTES:
                 raise ValueError("Upload is empty or larger than 32 MB")
             payload = json.loads(self.rfile.read(length))
+            if self.path == '/api/ui-forge/export':
+                self.send_bytes(200, 'application/zip', export_ui_zip(payload))
+                return
+            if self.path == '/api/ui-forge/generate':
+                self.send_bytes(200, 'application/json', json.dumps(generate_ui(payload)).encode('utf-8'))
+                return
             result = analyze_base(payload) if self.path == '/api/base-profile' else process_request(payload)
             body = json.dumps(result, separators=(",", ":")).encode("utf-8")
             self.send_bytes(200, "application/json", body)
