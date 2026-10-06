@@ -67,7 +67,7 @@ export function setupMapAssets(onAdd:(assets:MapLibraryAsset[])=>Promise<void>) 
       </main>
       <aside class="ma-controls">
         <div><div class="ma-label">01 · Khuôn vật thể</div>
-          <label>Alpha<select id="maAlpha"><option value="hard">Nét đặc 0 / 255</option><option value="preserve">Giữ alpha gốc</option></select></label>
+          <label>Alpha<select id="maAlpha"><option value="hard">Nét đặc 0 / 255</option><option value="preserve" selected>Giữ alpha gốc</option></select></label>
           <label>Ngưỡng viền<input id="maLow" type="number" min="1" max="255" value="110"></label>
           <label>Ngưỡng lõi<input id="maHigh" type="number" min="1" max="255" value="200"></label>
           <div class="ma-inline"><button id="maInspect" class="active">Xem</button><button id="maErase">Tẩy</button><button id="maRestore">Giữ</button></div>
@@ -77,9 +77,9 @@ export function setupMapAssets(onAdd:(assets:MapLibraryAsset[])=>Promise<void>) 
         </div>
         <div><hr><div class="ma-label">02 · Màu sắc</div>
           <label>Bảng màu<select id="maColors"><option value="0">Giữ nhiều chi tiết</option><option value="128">128 màu</option><option value="64">64 màu</option><option value="48">48 màu</option></select></label>
-          <label>Gom nhiễu nhẹ<input id="maSmooth" type="number" min="0" max="32" value="16"></label>
-          <label>Độ đậm màu<input id="maChroma" type="number" min="0.5" max="1.5" step="0.02" value="1.08"></label>
-          <label>Tương phản<input id="maContrast" type="number" min="0.5" max="1.5" step="0.02" value="1.04"></label>
+          <label>Gom nhiễu nhẹ<input id="maSmooth" type="number" min="0" max="32" value="0"></label>
+          <label>Độ đậm màu<input id="maChroma" type="number" min="0.5" max="1.5" step="0.02" value="1"></label>
+          <label>Tương phản<input id="maContrast" type="number" min="0.5" max="1.5" step="0.02" value="1"></label>
           <button class="primary ma-wide" id="maProcess">Làm sạch item đang chọn</button>
           <button class="ma-wide" id="maProcessAll">Làm sạch cả danh sách</button>
           <p class="ma-muted">Xử lý cả danh sách để dùng chung bảng màu. Ảnh thiếu chi tiết vẫn cần vẽ lại.</p>

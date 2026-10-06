@@ -77,6 +77,18 @@ python3 tools/repair_outfit_sprite.py \
 
 ### Local UI
 
+The **Xưởng map** button (`Alt+M`) opens Map Studio with synchronized image layers
+and native-size modules. Import a folder/ZIP with `layout.json`, or start from the
+included eight-layer reference. Move/lock/reorder layers, crop modules, place props,
+draw rectangular collisions, and save a portable Project JSON or composite PNG.
+
+**Xử lý nét pixel** processes an uploaded full map or all current layers/modules
+with a shared palette, color-aware cluster refinement, progress and cancellation.
+The result is previewed before applying; original images remain in the project.
+This is deterministic image processing, not semantic layer extraction or AI redraw.
+Install the optional map dependencies with `python3 -m pip install -r tools/requirements-map.txt`.
+See [Map Studio v3](docs/map-studio-v3.md) for the visual standard and limitations.
+
 The **Xưởng UI / HUD** button (`Alt+U`) opens a procedural interface designer:
 assemble mobile HUDs from separate 16px corners, repeating edges and backgrounds.
 Panel, button, skill, item and inventory frames resize without stretching corners.

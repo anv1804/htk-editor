@@ -7,6 +7,7 @@ import argparse
 import base64
 import io
 import json
+import re
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -264,6 +265,15 @@ class RepairHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        match = re.fullmatch(r'/api/map-pixel/jobs/([a-f0-9]{32})(/result)?', self.path)
+        if match:
+            from map_pixel_jobs import status, result
+            try:
+                data = result(match[1]) if match[2] else status(match[1])
+                self.send_bytes(200, 'application/json', json.dumps(data).encode('utf-8'))
+            except (KeyError, ValueError) as exc:
+                self.send_bytes(404 if isinstance(exc, KeyError) else 409, 'application/json', json.dumps({'error': str(exc)}).encode('utf-8'))
+            return
         # Serve compiled Vite/TS app if present
         dist_index = DIST_DIR / "index.html"
         if self.path in ("/", "/index.html"):
@@ -305,8 +315,23 @@ class RepairHandler(BaseHTTPRequestHandler):
         self.send_bytes(404, "text/plain; charset=utf-8", b"Not found")
 
     def do_POST(self) -> None:  # noqa: N802
+        pixel_cancel = re.fullmatch(r'/api/map-pixel/jobs/([a-f0-9]{32})/cancel', self.path)
+        if self.path == '/api/map-pixel/jobs' or pixel_cancel:
+            from map_pixel_jobs import start, cancel
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if length <= 0 or length > MAX_REQUEST_BYTES:
+                    raise ValueError('Lượt tải lên tối đa 32 MB; hãy chia nhỏ bộ layer.')
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise ValueError('Yêu cầu không hợp lệ.')
+                data = cancel(pixel_cancel[1]) if pixel_cancel else start(payload)
+                self.send_bytes(200 if pixel_cancel else 202, 'application/json', json.dumps(data).encode('utf-8'))
+            except (ValueError, TypeError, KeyError) as exc:
+                self.send_bytes(400, 'application/json', json.dumps({'error': str(exc)}).encode('utf-8'))
+            return
         if self.path not in ("/api/repair", "/api/base-profile", "/api/ui-forge/generate", "/api/ui-forge/export",
-                             "/api/map-assets/process", "/api/map-assets/import", "/api/map-assets/export", "/api/map-assets/crop"):
+                             "/api/map-assets/process", "/api/map-assets/import", "/api/map-assets/export", "/api/map-assets/crop", "/api/map-assets/bundle"):
             self.send_bytes(404, "application/json", b'{"error":"Not found"}')
             return
         try:
@@ -316,6 +341,11 @@ class RepairHandler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if self.path.startswith('/api/map-assets/'):
                 from map_asset_pipeline import process, import_zip, export_zip, extract_crop
+                if self.path.endswith('/bundle'):
+                    from map_scene_bundle import import_bundle
+                    result = import_bundle(payload)
+                    self.send_bytes(200, 'application/json', json.dumps(result).encode('utf-8'))
+                    return
                 if self.path.endswith('/export'):
                     self.send_bytes(200, 'application/zip', export_zip(payload))
                 else:

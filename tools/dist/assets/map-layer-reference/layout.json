@@ -1,0 +1,206 @@
+{
+  "canvas": {
+    "width": 1983,
+    "height": 793
+  },
+  "origin": "top_left",
+  "blend": "source_over",
+  "opacity": 1,
+  "layers": [
+    {
+      "file": "layers/01_background.png",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "file": "layers/02_bamboo.png",
+      "x": 0,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "file": "layers/03_river.png",
+      "x": 0,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "file": "layers/04_terrain.png",
+      "x": 0,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "file": "layers/05_bridges.png",
+      "x": 0,
+      "y": 0,
+      "z": 4
+    },
+    {
+      "file": "layers/06_props.png",
+      "x": 0,
+      "y": 0,
+      "z": 5
+    },
+    {
+      "file": "layers/07_waterfalls.png",
+      "x": 0,
+      "y": 0,
+      "z": 6
+    },
+    {
+      "file": "layers/08_lotus.png",
+      "x": 0,
+      "y": 0,
+      "z": 7
+    }
+  ],
+  "objects": [
+    {
+      "file": "objects/bridge_rope_left.png",
+      "x": 526,
+      "y": 320,
+      "width": 112,
+      "height": 33
+    },
+    {
+      "file": "objects/bridge_rope_center.png",
+      "x": 1058,
+      "y": 500,
+      "width": 123,
+      "height": 50
+    },
+    {
+      "file": "objects/bridge_rope_right.png",
+      "x": 1721,
+      "y": 315,
+      "width": 105,
+      "height": 46
+    },
+    {
+      "file": "objects/bridge_wood_lower.png",
+      "x": 900,
+      "y": 600,
+      "width": 370,
+      "height": 104
+    },
+    {
+      "file": "objects/ladder_right.png",
+      "x": 1517,
+      "y": 409,
+      "width": 35,
+      "height": 143
+    },
+    {
+      "file": "objects/gate_main.png",
+      "x": 864,
+      "y": 367,
+      "width": 175,
+      "height": 139
+    },
+    {
+      "file": "objects/gate_small.png",
+      "x": 190,
+      "y": 144,
+      "width": 102,
+      "height": 104
+    },
+    {
+      "file": "objects/stone_tablet_left.png",
+      "x": 307,
+      "y": 184,
+      "width": 38,
+      "height": 63
+    },
+    {
+      "file": "objects/stone_tablet_right.png",
+      "x": 1844,
+      "y": 515,
+      "width": 45,
+      "height": 58
+    },
+    {
+      "file": "objects/stone_lantern_left.png",
+      "x": 136,
+      "y": 381,
+      "width": 45,
+      "height": 54
+    },
+    {
+      "file": "objects/stone_lantern_river.png",
+      "x": 398,
+      "y": 590,
+      "width": 42,
+      "height": 46
+    },
+    {
+      "file": "objects/lantern_center.png",
+      "x": 747,
+      "y": 438,
+      "width": 48,
+      "height": 88
+    },
+    {
+      "file": "objects/lantern_right.png",
+      "x": 1400,
+      "y": 298,
+      "width": 48,
+      "height": 91
+    },
+    {
+      "file": "objects/lantern_upper_right.png",
+      "x": 1664,
+      "y": 233,
+      "width": 45,
+      "height": 82
+    },
+    {
+      "file": "objects/waterwheel.png",
+      "x": 907,
+      "y": 626,
+      "width": 110,
+      "height": 77
+    },
+    {
+      "file": "objects/crate_large.png",
+      "x": 1900,
+      "y": 249,
+      "width": 40,
+      "height": 38
+    },
+    {
+      "file": "objects/crate_small.png",
+      "x": 1940,
+      "y": 259,
+      "width": 32,
+      "height": 29
+    },
+    {
+      "file": "objects/lotus_cluster.png",
+      "x": 551,
+      "y": 637,
+      "width": 115,
+      "height": 63
+    },
+    {
+      "file": "objects/lotus_pair.png",
+      "x": 1010,
+      "y": 665,
+      "width": 95,
+      "height": 56
+    },
+    {
+      "file": "objects/lotus_single.png",
+      "x": 1285,
+      "y": 698,
+      "width": 65,
+      "height": 51
+    }
+  ],
+  "verification": {
+    "different_pixels": 0,
+    "reference": "preview.png"
+  },
+  "note": "Reconstructed and arranged map; not pixel-identical to the original flattened source."
+}
